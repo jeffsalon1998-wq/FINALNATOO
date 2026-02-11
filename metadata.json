@@ -1,0 +1,5 @@
+{
+  "name": "Sunlight Inventory",
+  "description": "Professional warehouse management system for Sunlight Guest Hotel Coron featuring FEFO logic, zone-based tracking, and electronic signatures.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,66 @@
+
+import { InventoryItem, Category, Zone, User } from './types';
+
+export let COLORS = {
+  MAROON: '#800000',
+  GOLD: '#FFD700',
+  GRAY_LIGHT: '#F3F4F6',
+  GRAY_BORDER: '#E5E7EB',
+};
+
+export let MOCK_USERS: User[] = [
+  { id: '1', name: 'Admin User', role: 'Manager' },
+  { id: '2', name: 'R. Dela Cruz', role: 'Staff' },
+  { id: '3', name: 'M. Santos', role: 'Staff' },
+];
+
+let todayPlus15 = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+export let INITIAL_INVENTORY: InventoryItem[] = [
+  {
+    id: 'item-1',
+    sku: 'SKU-DRY-001',
+    name: 'Jasmine Rice (25kg)',
+    category: 'Dry Goods',
+    uom: 'Sack',
+    stock: { [Zone.MAIN]: 2 },
+    batches: [
+      { id: 'BAT-001', expiry: '2025-12-31', quantity: 2, zone: Zone.MAIN }
+    ],
+    earliestExpiry: '2025-12-31',
+    unitCost: 1250,
+    isFastMoving: true,
+    parStock: 5,
+    // Fix: Added missing initialParStock to match InventoryItem type definition
+    initialParStock: 5
+  },
+  {
+    id: 'item-2',
+    sku: 'SKU-ALC-001',
+    name: 'San Miguel Pale Pilsen',
+    category: 'Alcohol',
+    uom: 'Case',
+    stock: { [Zone.MAIN]: 24 },
+    batches: [
+      { id: 'BAT-002', expiry: todayPlus15, quantity: 24, zone: Zone.MAIN }
+    ],
+    earliestExpiry: todayPlus15,
+    unitCost: 950,
+    isFastMoving: true,
+    parStock: 10,
+    // Fix: Added missing initialParStock to match InventoryItem type definition
+    initialParStock: 10
+  }
+];
+
+export let DEPARTMENTS = [
+  'Housekeeping',
+  'F&B Service',
+  'Kitchen',
+  'Front Office',
+  'Engineering',
+  'Spa & Wellness',
+  'HR & Admin'
+];
+
+export let ZONES = Object.values(Zone);
