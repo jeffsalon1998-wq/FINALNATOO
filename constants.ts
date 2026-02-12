@@ -9,9 +9,8 @@ export let COLORS = {
 };
 
 export let MOCK_USERS: User[] = [
-  { id: '1', name: 'Admin User', role: 'Manager' },
-  { id: '2', name: 'R. Dela Cruz', role: 'Staff' },
-  { id: '3', name: 'M. Santos', role: 'Staff' },
+  { id: 'staff', name: 'Sunlight Staff', role: 'Staff' },
+  { id: 'guest', name: 'Guest Viewer', role: 'Guest' },
 ];
 
 let todayPlus15 = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -31,7 +30,6 @@ export let INITIAL_INVENTORY: InventoryItem[] = [
     unitCost: 1250,
     isFastMoving: true,
     parStock: 5,
-    // Fix: Added missing initialParStock to match InventoryItem type definition
     initialParStock: 5
   },
   {
@@ -48,7 +46,6 @@ export let INITIAL_INVENTORY: InventoryItem[] = [
     unitCost: 950,
     isFastMoving: true,
     parStock: 10,
-    // Fix: Added missing initialParStock to match InventoryItem type definition
     initialParStock: 10
   }
 ];

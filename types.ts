@@ -1,3 +1,4 @@
+
 export enum Zone {
   MAIN = 'Main (On-site 25sqm)',
   SATELLITE = 'Satellite (On-site 10sqm)',
@@ -16,22 +17,22 @@ export interface StockBatch {
   id: string;
   expiry: string; // ISO Date
   quantity: number;
-  zone: string; // Changed to string for dynamic zone management
+  zone: string;
 }
 
 export interface InventoryItem {
   id: string;
   sku: string;
   name: string;
-  category: string; // Changed to string for dynamic category management
+  category: string;
   uom: string;
-  stock: Record<string, number>; // Dynamic zones
+  stock: Record<string, number>;
   batches: StockBatch[];
   earliestExpiry: string;
   unitCost: number;
   isFastMoving: boolean;
   parStock: number;
-  initialParStock: number; // The original baseline to prevent extreme auto-downgrades
+  initialParStock: number;
 }
 
 export interface Transaction {
@@ -51,10 +52,23 @@ export interface Transaction {
   prNumber?: string;
 }
 
+export interface PendingIssue {
+  id: string;
+  timestamp: string;
+  user: string;
+  receiverName?: string;
+  department: string;
+  signature?: string;
+  items: CartItem[];
+  status: 'pending' | 'released';
+}
+
+export type UserRole = 'Guest' | 'Staff' | 'Manager';
+
 export interface User {
   id: string;
   name: string;
-  role: 'Staff' | 'Manager';
+  role: UserRole;
 }
 
 export interface CartItem {

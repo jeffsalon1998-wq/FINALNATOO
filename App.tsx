@@ -1,380 +1,174 @@
 import { 
-  InventoryItem, Transaction, User, CartItem, StockBatch, Zone 
+  InventoryItem, Transaction, User, CartItem, StockBatch, Zone, PendingIssue, UserRole
 } from './types';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import html2canvas from 'html2canvas';
 import { 
   LayoutDashboard, Package, History, ShoppingCart, 
-  Search, X, CheckCircle2, PackagePlus, Sparkles,
-  Building, Hash, Settings, TrendingDown, 
-  PlusCircle, Inbox, Users, Check, RotateCcw,
-  ArrowRight, Calendar, Tag, Layers, Trash2, Edit2, ShieldCheck, Briefcase, AlertTriangle, MapPin, DollarSign, ClipboardList, Eye, Key, ChevronRight, ChevronDown, Minus, Plus, ArrowRightLeft, Globe, Download, FileJson, FileSpreadsheet, AlertCircle, Clock, Cloud, Loader2, Database, ExternalLink, RefreshCw, CalendarOff, Wand2, BrainCircuit, Activity, HardDrive, Zap, CalendarClock, PackageX, FileText
+  Search, X, CheckCircle2, Sparkles,
+  Settings, TrendingDown, 
+  PlusCircle, Users, RotateCcw,
+  ArrowRight, ShieldCheck, ClipboardList, Activity, CalendarClock, Lock, Loader2, Download, Eye, Save, Send, FileOutput, Trash2, Database, Shield, Cloud, ExternalLink, RefreshCw, UploadCloud, AlertCircle
 } from 'lucide-react';
 import { StatCard } from './components/StatCard';
 import { ItemCard } from './components/ItemCard';
 import { SignaturePad } from './components/SignaturePad';
 import { db } from './db';
 
-let HOTEL_BG_URL = "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=2000"; 
-let BRAND_YELLOW = "#FFD700"; 
-let GLOBAL_ZONE_KEY = 'All Zones';
-const STORAGE_LIMIT_MB = 5120; // 5GB
+const BRAND_YELLOW = "#FFD700"; 
+const BRAND_MAROON = "#800000";
+const GLOBAL_ZONE_KEY = 'All Zones';
+const GLOBAL_CATEGORY_KEY = 'All Categories';
 
-const BrandLogo = ({ 
-  className = "", 
-  color = BRAND_YELLOW, 
-  scale = "text-5xl", 
-  subScale = "text-[10px]",
-  subClassName = ""
-}: { 
-  className?: string, 
-  color?: string, 
-  scale?: string, 
-  subScale?: string,
-  subClassName?: string
-}) => (
-  <div className={`flex flex-col items-center select-none ${className}`}>
-    <span className={`${scale} brand-script leading-[0.7]`} style={{ color }}>Sunlight</span>
-    <span className={`${subScale} brand-title uppercase tracking-[0.4em] mt-2 ${subClassName}`} style={{ color: color === BRAND_YELLOW ? 'rgba(218,165,32,0.9)' : '#4b5563' }}>Hotel, Coron</span>
-  </div>
-);
-
-const ReceiptContent = React.forwardRef<HTMLDivElement, { 
-  lastTxId: string | null, 
-  receiverName: string, 
-  receiverDept: string, 
-  currentUser: User | null, 
-  cart: CartItem[], 
-  signature: string | null 
-}>(({ lastTxId, receiverName, receiverDept, currentUser, cart, signature }, ref) => {
-  let date = new Date();
-  let dateStr = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase();
-  let timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-
+const BrandLogo = ({ className = "", color = BRAND_YELLOW, scale = "text-5xl", subScale = "text-[10px]", subClassName = "" }: { className?: string, color?: string, scale?: string, subScale?: string, subClassName?: string }) => {
+  const isYellow = color === BRAND_YELLOW;
   return (
-    <div ref={ref} className="w-[800px] p-12 bg-white text-gray-900 border-8 border-[#800000]/10">
-      <div className="mb-10">
-        <BrandLogo color={BRAND_YELLOW} scale="text-9xl" subScale="text-sm" className="items-start" subClassName="ml-24" />
-      </div>
-      <div className="flex justify-between items-end border-b-4 border-[#800000] pb-6 mb-10">
-        <div className="space-y-1">
-          <p className="text-sm font-black text-gray-400 uppercase tracking-widest">Warehouse Release Receipt</p>
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">ID: {lastTxId || 'TX-089GJLT'}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#800000]">Issue Date</p>
-          <p className="text-sm font-black text-[#800000] uppercase">{dateStr}</p>
-          <p className="text-xs font-bold text-[#800000]">{timeStr}</p>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-12 mb-12">
-        <div className="p-8 bg-gray-50/50 rounded-3xl border border-gray-100">
-          <h4 className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-6">Recipient Information</h4>
-          <p className="text-xl font-black text-[#800000] capitalize leading-none">{receiverName || 'Staff'}</p>
-          <p className="text-xs font-black uppercase text-gray-400 tracking-widest mt-2">{receiverDept}</p>
-        </div>
-        <div className="p-8 bg-gray-50/50 rounded-3xl border border-gray-100">
-          <h4 className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-6">Releaser Information</h4>
-          <p className="text-xl font-black text-[#800000] leading-none">{currentUser?.name || 'Warehouse Staff'}</p>
-          <p className="text-xs font-black uppercase text-gray-400 tracking-widest mt-2">Sunlight Warehouse Team</p>
-        </div>
-      </div>
-      <table className="w-full mb-12">
-        <thead>
-          <tr className="border-b border-gray-100">
-            <th className="py-4 text-left text-[9px] font-black uppercase text-gray-400 tracking-widest">Sku</th>
-            <th className="py-4 text-left text-[9px] font-black uppercase text-gray-400 tracking-widest">Item Description</th>
-            <th className="py-4 text-right text-[9px] font-black uppercase text-gray-400 tracking-widest">Quantity</th>
-            <th className="py-4 text-right text-[9px] font-black uppercase text-gray-400 tracking-widest">Unit</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-50">
-          {cart.map((item, idx) => (
-            <tr key={idx}>
-              <td className="py-6 text-xs font-bold text-gray-400 tabular-nums">{item.sku}</td>
-              <td className="py-6 text-sm font-black text-gray-800">{item.name}</td>
-              <td className="py-6 text-right text-sm font-black text-[#800000] tabular-nums">{item.quantity}</td>
-              <td className="py-6 text-right text-[10px] font-black uppercase text-gray-400">{item.uom}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="flex justify-end pt-12">
-        <div className="text-center">
-          <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-12">Electronic Acknowledgement</h4>
-          {signature ? (
-            <img src={signature} alt="Signature" className="h-20 mx-auto mb-2" />
-          ) : (
-            <div className="h-20 w-48 mx-auto border-b border-gray-200" />
-          )}
-        </div>
-      </div>
-      <div className="mt-20 text-center">
-        <p className="text-[9px] font-black uppercase tracking-[0.4em] text-gray-300">Sunlight Guest Hotel Coron • Warehouse Management System</p>
-      </div>
+    <div className={`flex flex-col items-center select-none ${className}`}>
+      <span 
+        className={`${scale} brand-script leading-[0.7]`} 
+        style={{ 
+          color,
+          WebkitTextStroke: isYellow ? '0.8px black' : 'none',
+          textShadow: isYellow ? '1px 1px 0px rgba(0,0,0,0.1)' : 'none'
+        }}
+      >
+        Sunlight
+      </span>
+      <span className={`${scale === 'text-8xl' ? 'text-sm' : subScale} brand-title uppercase tracking-[0.4em] mt-2 ${subClassName}`} style={{ color: isYellow ? 'rgba(0,0,0,0.7)' : '#4b5563' }}>Hotel, Coron</span>
     </div>
   );
-});
-
-const generateBatchId = () => `BAT-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+};
 
 const App: React.FC = () => {
-  // --- DATABASE STATE ---
+  // App States
+  const [appInit, setAppInit] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isCloudMode, setIsCloudMode] = useState(false);
+  const [dbStatus, setDbStatus] = useState<{ connected: boolean; error?: string }>({ connected: false });
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [pendingIssues, setPendingIssues] = useState<PendingIssue[]>([]);
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
   const [availableZones, setAvailableZones] = useState<string[]>([]);
-  const [adminPassword, setAdminPassword] = useState('1234');
-  
-  // --- RESOURCE GUARD STATE ---
-  const [storageUsageMB, setStorageUsageMB] = useState(0);
-
-  // --- UI STATE ---
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [view, setView] = useState<'dashboard' | 'inventory' | 'history' | 'settings'>('dashboard');
-  const [isSplashVisible, setIsSplashVisible] = useState(true);
-  const [isExitingSplash, setIsExitingSplash] = useState(false);
-  const [isUserSelectorOpen, setIsUserSelectorOpen] = useState(false);
+  const [view, setView] = useState<'dashboard' | 'inventory' | 'pending' | 'history' | 'settings'>('dashboard');
+
+  // UI States
+  const [isUserSelectorOpen, setIsUserSelectorOpen] = useState(true);
   const [selectedZone, setSelectedZone] = useState<string>(GLOBAL_ZONE_KEY);
+  const [selectedCategory, setSelectedCategory] = useState<string>(GLOBAL_CATEGORY_KEY);
   const [searchTerm, setSearchTerm] = useState('');
-  const [historySearch, setHistorySearch] = useState('');
+  const [logDeptFilter, setLogDeptFilter] = useState('All');
   const [showAddSuccess, setShowAddSuccess] = useState<string | null>(null);
+  const [showError, setShowError] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   
-  // --- MODAL STATE ---
+  // Modals
   const [isAddingItem, setIsAddingItem] = useState(false);
-  const [isTransferringStock, setIsTransferringStock] = useState(false);
+  const [isEditingItem, setIsEditingItem] = useState<InventoryItem | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [checkoutMode, setCheckoutMode] = useState<'queue' | 'release'>('queue');
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [isEditingInventoryItem, setIsEditingInventoryItem] = useState(false);
+  const [isFinalizingIssue, setIsFinalizingIssue] = useState(false);
+  const [activeRequestToFinalize, setActiveRequestToFinalize] = useState<PendingIssue | null>(null);
   const [isPasswordPromptOpen, setIsPasswordPromptOpen] = useState(false);
-  const [isPasswordChangeOpen, setIsPasswordChangeOpen] = useState(false);
-  const [isManageModalOpen, setIsManageModalOpen] = useState(false);
-  const [isTursoConfigOpen, setIsTursoConfigOpen] = useState(false);
-  const [showReceiveSuggestions, setShowReceiveSuggestions] = useState(false);
-  const [itemHasExpiry, setItemHasExpiry] = useState(true);
-
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
   const [pendingUser, setPendingUser] = useState<User | null>(null);
-  const [itemToEdit, setItemToEdit] = useState<InventoryItem | null>(null);
-  const [manageTarget, setManageTarget] = useState<'users' | 'categories' | 'departments' | 'zones' | null>(null);
-  const [manageInput, setManageInput] = useState('');
-  const [manageRole, setManageRole] = useState<'Staff' | 'Manager'>('Staff');
-  const [newPassword, setNewPassword] = useState('');
+  const [reportModal, setReportModal] = useState<{ open: boolean, title: string, items: InventoryItem[] }>({ open: false, title: '', items: [] });
+  const [isCloudSetupOpen, setIsCloudSetupOpen] = useState(false);
+  
+  // Turso Config State
+  const [tursoUrl, setTursoUrl] = useState(localStorage.getItem('TURSO_URL') || "libsql://database-red-tree-vercel-icfg-tf7wnf43zngjwvbur4t9rp6n.aws-us-east-1.turso.io");
+  const [tursoToken, setTursoToken] = useState(localStorage.getItem('TURSO_TOKEN') || "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzA4ODM2NDEsImlkIjoiZGUyZjlkZTgtOTEzYS00YzE1LThlMzMtMzhlYTMzMGFkNzI5IiwicmlkIjoiYzNhZDBiYmMtNTI0My00NTQzLThhOTgtYmI4MjI2ZDc2MjUzIn0.8gOpqGrKkuO5LTP8PvBWZJjMskckorIyyPedTVeIZHSXqCtebkp2AQvl-2VPRZchEtizL8MJxQTZR2Da4tj4CQ");
+
+  // Transaction Finalization
   const [receiverName, setReceiverName] = useState('');
   const [receiverDept, setReceiverDept] = useState('Kitchen');
   const [signature, setSignature] = useState<string | null>(null);
-  const [lastTxId, setLastTxId] = useState<string | null>(null);
-  const [currentAutoBatchId, setCurrentAutoBatchId] = useState(generateBatchId());
-  const [tursoUrlInput, setTursoUrlInput] = useState('');
-  const [tursoTokenInput, setTursoTokenInput] = useState('');
+  const [receiptToExport, setReceiptToExport] = useState<PendingIssue | null>(null);
 
-  // Transfer State
-  const [transferData, setTransferData] = useState({ itemId: '', qty: 0, fromZone: '', toZone: '' });
-
-  const [newItemData, setNewItemData] = useState<Partial<InventoryItem & { receivedQty: number; restockZone: string }>>({
-    name: '', category: '', uom: '', unitCost: 0, parStock: 0, receivedQty: 0, restockZone: '', earliestExpiry: ''
+  // New Item Data
+  const [newItemData, setNewItemData] = useState<Partial<InventoryItem & { receivedQty: number; restockZone: string; expiryDate: string; notExpiring: boolean }>>({
+    name: '', sku: '', category: '', uom: 'Units', unitCost: 0, parStock: 0, receivedQty: 1, restockZone: '', expiryDate: '', notExpiring: false
   });
+  const [itemSuggestions, setItemSuggestions] = useState<InventoryItem[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
-  const receiptRef = useRef<HTMLDivElement>(null);
+  const isGuest = currentUser?.role === 'Guest';
+  const isStaff = currentUser?.role === 'Staff' || currentUser?.role === 'Manager';
 
-  // --- REPORT EXPORT ENGINE ---
-  const downloadCSV = (filename: string, headers: string[], rows: string[][]) => {
-    const content = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-    ].join('\n');
-    
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const notify = (msg: string) => {
+    setShowAddSuccess(msg);
+    setTimeout(() => setShowAddSuccess(null), 2000);
   };
 
-  const exportConsumptionReport = () => {
-    const issues = transactions.filter(t => t.action === 'ISSUE');
-    const headers = ['Timestamp', 'Item', 'SKU', 'Qty', 'UOM', 'Department', 'Recipient', 'Issued By'];
-    const rows = issues.map(t => [
-      new Date(t.timestamp).toLocaleString(),
-      t.itemName,
-      t.itemSku,
-      t.qty.toString(),
-      t.itemUom || '',
-      t.department || '',
-      t.receiverName || '',
-      t.user
-    ]);
-    downloadCSV(`Sunlight_Consumption_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
-    notify("Consumption Exported");
+  const notifyError = (msg: string) => {
+    setShowError(msg);
+    setTimeout(() => setShowError(null), 4000);
   };
 
-  const exportParReport = () => {
-    const headers = ['SKU', 'Item', 'Category', 'Current Stock', 'PAR Level', 'Gap', 'UOM', 'Status'];
-    const rows = inventory.map(item => {
-      const totalStock = item.batches.reduce((sum, b) => sum + b.quantity, 0);
-      const gap = Math.max(0, item.parStock - totalStock);
-      return [
-        item.sku,
-        item.name,
-        item.category,
-        totalStock.toString(),
-        item.parStock.toString(),
-        gap.toString(),
-        item.uom,
-        totalStock <= item.parStock * 0.4 ? 'LOW' : 'OK'
-      ];
-    });
-    downloadCSV(`Sunlight_PAR_Audit_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
-    notify("PAR Audit Exported");
-  };
-
-  const exportExpiryReport = () => {
-    const headers = ['Item', 'SKU', 'Batch ID', 'Zone', 'Qty', 'Expiry Date', 'Days Remaining'];
-    const rows: string[][] = [];
-    
-    inventory.forEach(item => {
-      item.batches.forEach(batch => {
-        if (batch.quantity <= 0) return;
-        const diffDays = Math.ceil((new Date(batch.expiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-        rows.push([
-          item.name,
-          item.sku,
-          batch.id,
-          batch.zone,
-          batch.quantity.toString(),
-          batch.expiry === '2099-12-31' ? 'Perpetual' : batch.expiry,
-          batch.expiry === '2099-12-31' ? 'N/A' : diffDays.toString()
-        ]);
-      });
-    });
-
-    rows.sort((a, b) => {
-      if (a[5] === 'Perpetual') return 1;
-      if (b[5] === 'Perpetual') return -1;
-      return new Date(a[5]).getTime() - new Date(b[5]).getTime();
-    });
-
-    downloadCSV(`Sunlight_Expiry_Report_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
-    notify("Expiry Report Exported");
-  };
-
-  // --- RESOURCE TICKER ---
-  useEffect(() => {
-    const tick = async () => {
-      await db.trackActiveSession();
-      const usage = await db.getStorageUsageMB();
-      setStorageUsageMB(usage);
-    };
-    tick();
-    const interval = setInterval(tick, 1000 * 30);
-    return () => clearInterval(interval);
-  }, []);
-
-  // --- DATA FETCHING ---
-  const loadAppData = async (showLoader = true) => {
+  const loadAppData = async (silent = false) => {
     try {
-      if (showLoader) setIsLoadingData(true);
-      await db.initialize();
-      const [inv, txs, u, cfg, pw, cloud] = await Promise.all([
-        db.getInventory(),
-        db.getTransactions(),
-        db.getUsers(),
-        db.getConfig(),
-        db.getAdminPassword(),
-        db.isCloud()
+      if (!silent) setIsSyncing(true);
+      if (!appInit) setIsLoadingData(true);
+      
+      const isInitialized = await db.initialize();
+      if (!isInitialized) {
+        throw new Error("Failed to initialize database connection.");
+      }
+
+      const [inv, txs, pi, cfg] = await Promise.all([
+        db.getInventory(), 
+        db.getTransactions(), 
+        db.getPendingIssues(), 
+        db.getConfig(), 
       ]);
       
-      const seededInv = inv.map(item => ({
-        ...item,
-        initialParStock: item.initialParStock || item.parStock
-      }));
-
-      setInventory(seededInv || []);
-      setTransactions(txs || []);
-      setUsers(u || []);
-      setAvailableCategories(cfg.categories || []);
-      setAvailableDepartments(cfg.departments || []);
-      setAvailableZones(cfg.zones || []);
-      setAdminPassword(pw || '1234');
-      setIsCloudMode(cloud);
-      if (!currentUser && u) setCurrentUser(u[0]);
-      if (showLoader) setIsLoadingData(false);
-    } catch (err) {
-      console.error("Failed to load sunlight data", err);
-      if (showLoader) setIsLoadingData(false);
+      setInventory((inv as InventoryItem[]).map(item => ({ ...item, initialParStock: item.initialParStock || item.parStock })));
+      setTransactions(txs as Transaction[]);
+      setPendingIssues(pi as PendingIssue[]);
+      setAvailableCategories(cfg?.categories || []);
+      setAvailableDepartments(cfg?.departments || []);
+      setAvailableZones(cfg?.zones || []);
+      
+      setDbStatus({ connected: true });
+      if (!silent && appInit) notify("Cloud Data Synced");
+    } catch (err: any) {
+      console.error("Failed to sync data:", err);
+      setDbStatus({ connected: false, error: err.message });
+      notifyError(`Sync Error: ${err.message || 'Database connection failed'}`);
+    } finally {
+      setIsLoadingData(false);
+      setIsSyncing(false);
+      setAppInit(true);
     }
   };
 
-  useEffect(() => {
-    loadAppData();
-  }, []);
+  useEffect(() => { loadAppData(); }, []);
 
-  const handleManualSync = async () => {
-    if (isSyncing) return;
+  const handleForcePushSync = async () => {
+    if (isGuest) return;
+    if (!confirm("Overwrite cloud database with current local state? This is irreversible.")) return;
+    
     setIsSyncing(true);
     try {
-      await db.reconcile();
-      await loadAppData(false);
-      notify("Data Synchronized");
-    } catch (e) {
-      console.error("Sync failed", e);
-      notify("Sync Failed");
+      await db.pushState(inventory, transactions, pendingIssues);
+      notify("State Pushed to Database");
+    } catch (err: any) {
+      console.error("Push failed", err);
+      notifyError(`Push Failed: ${err.message || 'Check database connection'}`);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  const handlePruneLogs = async () => {
-    if (confirm("Permanently delete transaction logs older than 90 days?")) {
-      setIsSyncing(true);
-      const count = await db.pruneOldLogs();
-      await loadAppData(false);
-      setIsSyncing(false);
-      notify(`Reclaimed space: ${count} logs removed`);
-    }
-  };
-
-  const calibrateParStocks = async () => {
-    setIsSyncing(true);
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    const updatedInventory = inventory.map(item => {
-      const itemIssues = transactions.filter(t => 
-        t.itemSku === item.sku && 
-        t.action === 'ISSUE' && 
-        new Date(t.timestamp) >= thirtyDaysAgo
-      );
-
-      const totalIssued = itemIssues.reduce((sum, t) => sum + t.qty, 0);
-      const averageDailyUsage = totalIssued / 30;
-      const recommendedPar = Math.ceil(averageDailyUsage * 14);
-      const finalPar = Math.max(item.initialParStock, recommendedPar, 1);
-      return { ...item, parStock: finalPar };
-    });
-
-    await db.updateInventory(updatedInventory);
-    setInventory(updatedInventory);
-    setIsSyncing(false);
-    notify("PAR Levels Calibrated");
-  };
-
   const syncAggregates = (item: InventoryItem): InventoryItem => {
     let stock: Record<string, number> = {};
-    availableZones.forEach(z => stock[z] = 0);
-    let earliest = '9999-12-31';
-    item.batches.forEach(b => {
+    (availableZones || []).forEach(z => stock[z] = 0);
+    let earliest = '2099-12-31';
+    (item.batches || []).forEach(b => {
       if (b.quantity > 0) {
         let zone = b.zone || availableZones[0];
         if (!stock[zone]) stock[zone] = 0;
@@ -382,261 +176,251 @@ const App: React.FC = () => {
         if (b.expiry && b.expiry < earliest) earliest = b.expiry;
       }
     });
-    return { ...item, stock, earliestExpiry: earliest === '9999-12-31' ? (item.earliestExpiry || 'N/A') : earliest };
+    return { ...item, stock, earliestExpiry: earliest };
   };
 
-  const notify = (msg: string) => {
-    setShowAddSuccess(msg);
-    setTimeout(() => setShowAddSuccess(null), 2000);
+  const handleQueueRequest = async () => {
+    if (!receiverDept || isGuest) return;
+    let newTxId = `REQ-${Math.random().toString(36).substr(2, 7).toUpperCase()}`;
+    
+    const newPending: PendingIssue = {
+      id: newTxId,
+      timestamp: new Date().toISOString(),
+      user: currentUser?.name || 'Unknown',
+      department: receiverDept,
+      items: [...cart],
+      status: 'pending'
+    };
+
+    try {
+      if (checkoutMode === 'release') {
+        setActiveRequestToFinalize(newPending);
+        setIsFinalizingIssue(true);
+        setIsCheckingOut(false);
+        setIsCartOpen(false);
+      } else {
+        const updatedPending = [newPending, ...(pendingIssues || [])];
+        await db.updatePendingIssues(updatedPending);
+        setPendingIssues([...updatedPending]);
+        setCart([]); 
+        setIsCheckingOut(false); 
+        setIsCartOpen(false); 
+        notify(`Request Queued: ${newTxId}`);
+        setView('pending');
+      }
+    } catch (e: any) {
+      notifyError(`Queue Failed: ${e.message}`);
+    }
   };
 
-  const handleEnterApp = () => {
-    setIsExitingSplash(true);
-    setTimeout(() => setIsSplashVisible(false), 800);
+  const handleDeletePending = async (id: string) => {
+    try {
+      const updated = (pendingIssues || []).filter(p => p.id !== id);
+      await db.updatePendingIssues(updated);
+      setPendingIssues([...updated]);
+      notify('Request Removed');
+    } catch (e: any) {
+      notifyError(`Delete Failed: ${e.message}`);
+    }
   };
 
-  const handleOpenReceive = () => {
-    setNewItemData({
-      name: '',
-      category: availableCategories[0] || '',
-      uom: '',
-      unitCost: 0,
-      parStock: 0,
-      receivedQty: 0,
-      restockZone: availableZones[0] || '',
-      earliestExpiry: ''
-    });
-    setCurrentAutoBatchId(generateBatchId());
-    setIsAddingItem(true);
-    setShowReceiveSuggestions(false);
-    setItemHasExpiry(true);
+  const handleClearHistory = async () => {
+    if (!isStaff || !confirm('Permanently clear all activity logs?')) return;
+    try {
+      await db.updateTransactions([]);
+      setTransactions([]);
+      notify('History Cleared');
+    } catch (e: any) {
+      notifyError(`Clear Failed: ${e.message}`);
+    }
   };
 
-  const handleFinalIssue = async () => {
-    if (!signature || !receiverName) return;
-    setIsSyncing(true);
-    let newTxId = `TX-${Math.random().toString(36).substr(2, 7).toUpperCase()}`;
-    setLastTxId(newTxId);
+  const exportReceiptAsImage = async (req: PendingIssue) => {
+    const el = document.getElementById(`receipt-${req.id}`);
+    if (!el) return;
+    el.style.display = 'block';
+    const canvas = await html2canvas(el, { scale: 2 });
+    el.style.display = 'none';
+    const link = document.createElement('a');
+    link.download = `Sunlight_Receipt_${req.id}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  };
 
+  const handleFinalRelease = async () => {
+    if (!activeRequestToFinalize || !signature || !receiverName || isGuest) return;
     let updatedInventory = [...inventory];
     let newTransactions: Transaction[] = [];
 
-    cart.forEach(cartItem => {
+    for (const item of activeRequestToFinalize.items) {
+      const invItem = updatedInventory.find(i => i.id === item.itemId);
+      const stockInZone = invItem?.stock[item.zone] || 0;
+      if (stockInZone < item.quantity) {
+        alert(`Insufficient Stock: ${item.name} in ${item.zone.split(' (')[0]}`);
+        return;
+      }
+    }
+
+    activeRequestToFinalize.items.forEach(cartItem => {
       let invIndex = updatedInventory.findIndex(i => i.id === cartItem.itemId);
       if (invIndex === -1) return;
       let item = { ...updatedInventory[invIndex] };
       let remainingToDeduct = cartItem.quantity;
-      let itemBatchesInZone = item.batches
+      let itemBatchesInZone = (item.batches || [])
         .filter(b => b.zone === cartItem.zone && b.quantity > 0)
         .sort((a, b) => new Date(a.expiry).getTime() - new Date(b.expiry).getTime());
 
       for (let batch of itemBatchesInZone) {
         if (remainingToDeduct <= 0) break;
-        let originalBatchIndex = item.batches.findIndex(b => b.id === batch.id && b.zone === cartItem.zone);
+        let bIdx = item.batches.findIndex(ob => ob.id === batch.id && ob.zone === cartItem.zone);
         let deduct = Math.min(batch.quantity, remainingToDeduct);
-        item.batches[originalBatchIndex] = { ...item.batches[originalBatchIndex], quantity: item.batches[originalBatchIndex].quantity - deduct };
+        item.batches[bIdx] = { ...item.batches[bIdx], quantity: item.batches[bIdx].quantity - deduct };
         remainingToDeduct -= deduct;
       }
       updatedInventory[invIndex] = syncAggregates(item);
-      newTransactions.push({
-        id: `${newTxId}-${cartItem.sku}`,
-        timestamp: new Date().toISOString(),
-        user: currentUser?.name || 'Unknown',
-        action: 'ISSUE',
-        qty: cartItem.quantity,
-        itemSku: cartItem.sku,
-        itemName: cartItem.name,
-        itemUom: cartItem.uom,
-        destZone: cartItem.zone,
-        department: receiverDept,
-        receiverName: receiverName,
-        signature: signature || undefined
+      newTransactions.push({ 
+        id: `TX-${activeRequestToFinalize.id}-${cartItem.sku}`, 
+        timestamp: new Date().toISOString(), 
+        user: currentUser?.name || 'Unknown', 
+        action: 'ISSUE', 
+        qty: cartItem.quantity, 
+        itemSku: cartItem.sku, 
+        itemName: cartItem.name, 
+        itemUom: cartItem.uom, 
+        destZone: cartItem.zone, 
+        department: activeRequestToFinalize.department, 
+        receiverName: receiverName, 
+        signature: signature
       });
     });
 
-    await db.updateInventory(updatedInventory);
-    await db.addTransactions(newTransactions);
-    
-    setInventory(updatedInventory);
-    setTransactions(prev => [...newTransactions, ...prev]);
+    try {
+      const finalizedReq = { ...activeRequestToFinalize, signature, receiverName, status: 'released' as const };
+      await db.updateInventory(updatedInventory);
+      await db.addTransactions(newTransactions);
+      
+      const remainingPending = (pendingIssues || []).filter(pi => pi.id !== activeRequestToFinalize.id);
+      await db.updatePendingIssues(remainingPending);
 
-    if (receiptRef.current) {
-      let canvas = await html2canvas(receiptRef.current!, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-      let link = document.createElement('a');
-      link.download = `Sunlight_Release_${newTxId}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+      setInventory([...updatedInventory]);
+      setTransactions(prev => [...newTransactions, ...(prev || [])]);
+      setPendingIssues([...remainingPending]);
+      
+      setIsFinalizingIssue(false);
+      setCart([]);
+      
+      setReceiptToExport(finalizedReq);
+      setTimeout(() => {
+        exportReceiptAsImage(finalizedReq);
+        setReceiptToExport(null);
+        setActiveRequestToFinalize(null);
+        setReceiverName('');
+        setSignature(null);
+      }, 500);
+
+      notify(`Released & Receipt Generated`);
+    } catch (e: any) {
+      notifyError(`Release Failed: ${e.message}`);
     }
-    
-    setCart([]);
-    setSignature(null);
-    setReceiverName('');
-    setIsCheckingOut(false);
-    setIsCartOpen(false);
-    setIsSyncing(false);
-    notify(`Issue Complete: ${newTxId}`);
   };
 
-  const handleCommitStockEntry = async () => {
-    if (!newItemData.name || !newItemData.uom) return alert("Name and UOM are required");
-    setIsSyncing(true);
-    let qty = newItemData.receivedQty || 0;
-    let expiry = (itemHasExpiry && newItemData.earliestExpiry) ? newItemData.earliestExpiry : '2099-12-31';
-
-    let initialBatch: StockBatch = {
-      id: currentAutoBatchId,
-      expiry: expiry,
-      quantity: qty,
+  const handleAddItemSubmit = async () => {
+    if (!newItemData.name || (newItemData.receivedQty || 0) <= 0 || isGuest) return;
+    
+    const existingItem = (inventory || []).find(i => i.name.toLowerCase() === newItemData.name?.toLowerCase());
+    let updatedInventory = [...inventory];
+    
+    const newBatch: StockBatch = {
+      id: `BAT-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+      expiry: newItemData.notExpiring ? '2099-12-31' : (newItemData.expiryDate || '2099-12-31'),
+      quantity: newItemData.receivedQty || 0,
       zone: newItemData.restockZone || availableZones[0]
     };
 
-    let updatedInventory = [...inventory];
-    let existingIndex = inventory.findIndex(i => i.name.toLowerCase() === newItemData.name?.toLowerCase());
-    
-    if (existingIndex > -1) {
-      let existingItem = { ...updatedInventory[existingIndex] };
-      updatedInventory[existingIndex] = syncAggregates({
-        ...existingItem,
-        batches: [...existingItem.batches, initialBatch],
-        unitCost: newItemData.unitCost || existingItem.unitCost,
-        parStock: newItemData.parStock || existingItem.parStock,
-        uom: newItemData.uom || existingItem.uom,
-        category: newItemData.category || existingItem.category
-      });
+    if (existingItem) {
+      const idx = updatedInventory.findIndex(i => i.id === existingItem.id);
+      let updatedItem = { ...existingItem };
+      updatedItem.batches = [...(updatedItem.batches || []), newBatch];
+      updatedInventory[idx] = syncAggregates(updatedItem);
     } else {
-      let item: InventoryItem = syncAggregates({
-        id: Math.random().toString(36).substr(2, 9),
-        sku: `SKU-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+      const item: InventoryItem = {
+        id: `item-${Date.now()}`,
+        sku: newItemData.sku || `SKU-${Date.now().toString(36).toUpperCase()}`,
         name: newItemData.name!,
         category: newItemData.category || availableCategories[0],
-        uom: newItemData.uom!,
-        stock: {}, 
-        batches: [initialBatch],
-        earliestExpiry: initialBatch.expiry,
+        uom: newItemData.uom || 'Units',
         unitCost: newItemData.unitCost || 0,
         parStock: newItemData.parStock || 0,
-        initialParStock: newItemData.parStock || 0, 
-        isFastMoving: false
-      });
-      updatedInventory = [item, ...updatedInventory];
+        initialParStock: newItemData.parStock || 0,
+        isFastMoving: false,
+        batches: [newBatch],
+        stock: {},
+        earliestExpiry: newBatch.expiry
+      };
+      updatedInventory.push(syncAggregates(item));
     }
 
-    await db.updateInventory(updatedInventory);
-    setInventory(updatedInventory);
-    setIsAddingItem(false);
-    setIsSyncing(false);
-    notify(`Stock Received: ${currentAutoBatchId}`);
-  };
+    const tx: Transaction = { 
+      id: `RX-${Date.now()}`, 
+      timestamp: new Date().toISOString(), 
+      user: currentUser?.name || 'Unknown', 
+      action: 'RECEIVE', 
+      qty: newItemData.receivedQty || 0, 
+      itemSku: newItemData.sku || existingItem?.sku || 'AUTO', 
+      itemName: newItemData.name!, 
+      destZone: newBatch.zone 
+    };
 
-  const handleSaveEditItem = async () => {
-    if (!itemToEdit) return;
-    setIsSyncing(true);
-    const updatedInventory = inventory.map(i => i.id === itemToEdit.id ? syncAggregates({ ...itemToEdit, initialParStock: itemToEdit.parStock }) : i);
-    await db.updateInventory(updatedInventory);
-    setInventory(updatedInventory);
-    setIsEditingInventoryItem(false);
-    setIsSyncing(false);
-    notify("Item Updated");
-  };
-
-  const handleDeleteInventoryItem = async () => {
-    if (!itemToEdit) return;
-    const itemId = itemToEdit.id;
-    const itemName = itemToEdit.name;
-
-    if (window.confirm(`Permanently delete "${itemName}"? This will erase all history and stock records for this item.`)) {
-      try {
-        setIsSyncing(true);
-        // 1. Capture inventory before filtering
-        const currentInv = await db.getInventory();
-        const nextInv = currentInv.filter(i => i.id !== itemId);
-        
-        // 2. Persist to database
-        await db.updateInventory(nextInv);
-        
-        // 3. Update application state
-        setInventory(nextInv);
-        
-        // 4. UI Cleanup
-        setIsEditingInventoryItem(false);
-        setItemToEdit(null);
-        notify("Item Removed");
-      } catch (err) {
-        console.error("Deletion failed", err);
-        alert("Failed to delete item. Please retry.");
-      } finally {
-        setIsSyncing(false);
-      }
+    try {
+      await db.updateInventory(updatedInventory);
+      await db.addTransactions([tx]);
+      setInventory([...updatedInventory]);
+      setTransactions(prev => [tx, ...(prev || [])]);
+      setIsAddingItem(false);
+      setNewItemData({ name: '', sku: '', category: '', uom: 'Units', unitCost: 0, parStock: 0, receivedQty: 1, restockZone: '', expiryDate: '', notExpiring: false });
+      notify("Stock Received");
+    } catch (e: any) {
+      notifyError(`Receive Failed: ${e.message}`);
     }
   };
 
-  const handleTransferStock = async () => {
-    if (!transferData.itemId || !transferData.toZone || transferData.qty <= 0) return alert("Incomplete data");
-    setIsSyncing(true);
-    
-    const updatedInventory = inventory.map(item => {
-      if (item.id !== transferData.itemId) return item;
-      let remaining = transferData.qty;
-      let newBatches = item.batches.map(batch => {
-        if (batch.zone === transferData.fromZone && remaining > 0 && batch.quantity > 0) {
-          let deduct = Math.min(batch.quantity, remaining);
-          remaining -= deduct;
-          return { ...batch, quantity: batch.quantity - deduct };
-        }
-        return batch;
-      });
-      
-      newBatches.push({
-        id: `TR-${generateBatchId()}`,
-        expiry: '2099-12-31', 
-        quantity: transferData.qty,
-        zone: transferData.toZone
-      });
-
-      return syncAggregates({ ...item, batches: newBatches });
-    });
-
-    await db.updateInventory(updatedInventory);
-    setInventory(updatedInventory);
-    
-    await db.addTransactions([{
-      id: `TX-TR-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      user: currentUser?.name || 'Manager',
-      action: 'TRANSFER' as any,
-      qty: transferData.qty,
-      itemSku: inventory.find(i=>i.id===transferData.itemId)?.sku || '',
-      itemName: inventory.find(i=>i.id===transferData.itemId)?.name || '',
-      sourceZone: transferData.fromZone,
-      destZone: transferData.toZone
-    }]);
-
-    setIsTransferringStock(false);
-    setIsSyncing(false);
-    notify("Transfer Complete");
+  const handleEditItemSubmit = async () => {
+    if (!isEditingItem || isGuest) return;
+    try {
+      const updatedWithAggregates = syncAggregates(isEditingItem);
+      const updated = (inventory || []).map(i => i.id === updatedWithAggregates.id ? updatedWithAggregates : i);
+      await db.updateInventory(updated);
+      setInventory([...updated]);
+      setIsEditingItem(null);
+      notify("Item Updated");
+    } catch (e: any) {
+      notifyError(`Update Failed: ${e.message}`);
+    }
   };
 
-  const addToCart = (item: InventoryItem, qty: number) => {
-    if (selectedZone === GLOBAL_ZONE_KEY) return alert("Select a specific zone to issue from.");
-    setCart(prev => {
-      let existing = prev.find(i => i.itemId === item.id && i.zone === selectedZone);
-      if (existing) return prev.map(i => i.itemId === item.id && i.zone === selectedZone ? {...i, quantity: i.quantity + qty} : i);
-      return [...prev, { itemId: item.id, sku: item.sku, name: item.name, quantity: qty, zone: selectedZone, uom: item.uom }];
-    });
-    notify("Added to Cart");
+  const handleDeleteItem = async () => {
+    if (!isEditingItem || isGuest) return;
+    try {
+      const updated = (inventory || []).filter(i => i.id !== isEditingItem.id);
+      await db.updateInventory(updated);
+      setInventory([...updated]);
+      setIsEditingItem(null);
+      notify("Item Registry Erased");
+    } catch (e: any) {
+      notifyError(`Delete Failed: ${e.message}`);
+    }
   };
 
-  const removeFromCart = (itemId: string, zone: string) => {
-    setCart(prev => prev.filter(i => !(i.itemId === itemId && i.zone === zone)));
-  };
-
-  const selectUserRequest = (user: User) => {
-    if (user.role === 'Manager') {
-      setPendingUser(user);
-      setIsPasswordPromptOpen(true);
-    } else {
-      setCurrentUser(user);
-      setIsUserSelectorOpen(false);
+  const handleUpdateConfig = async (key: 'departments' | 'categories', newList: string[]) => {
+    try {
+      const currentConfig = await db.getConfig();
+      const updatedConfig = { ...currentConfig, [key]: newList };
+      await db.saveConfig(updatedConfig);
+      if (key === 'departments') setAvailableDepartments([...newList]);
+      else setAvailableCategories([...newList]);
+      notify(`${key.charAt(0).toUpperCase() + key.slice(1)} Updated`);
+    } catch (e: any) {
+      notifyError(`Config Update Failed: ${e.message}`);
     }
   };
 
@@ -644,298 +428,260 @@ const App: React.FC = () => {
     let stored = await db.getAdminPassword();
     if (passwordInput === stored) {
       if (pendingUser) setCurrentUser(pendingUser);
-      setIsPasswordPromptOpen(false);
-      setIsUserSelectorOpen(false);
-      setPendingUser(null);
-      passwordError && setPasswordError(false);
-      setPasswordInput('');
-    } else {
-      setPasswordError(true);
-      setTimeout(() => setPasswordError(false), 1000);
-    }
+      setIsPasswordPromptOpen(false); setIsUserSelectorOpen(false); setPendingUser(null); setPasswordInput('');
+    } else { setPasswordError(true); setTimeout(() => setPasswordError(false), 1000); }
   };
 
-  const handleManageSubmit = async () => {
-    if (!manageInput) return;
-    setIsSyncing(true);
-    if (manageTarget === 'users') {
-      let newUser: User = { id: Date.now().toString(), name: manageInput, role: manageRole };
-      let updatedUsers = [...users, newUser];
-      setUsers(updatedUsers);
-      await db.saveUsers(updatedUsers);
-    } else {
-      let updatedConfig = await db.getConfig();
-      if (manageTarget === 'categories') updatedConfig.categories.push(manageInput);
-      else if (manageTarget === 'zones') updatedConfig.zones.push(manageInput);
-      else if (manageTarget === 'departments') updatedConfig.departments.push(manageInput);
-      setAvailableCategories([...updatedConfig.categories]);
-      setAvailableZones([...updatedConfig.zones]);
-      setAvailableDepartments([...updatedConfig.departments]);
-      await db.saveConfig(updatedConfig);
-    }
-    setManageInput('');
-    setIsSyncing(false);
-    notify("Added Successfully");
-  };
-
-  const handleManageDelete = async (item: any) => {
-    setIsSyncing(true);
-    if (manageTarget === 'users') {
-      if (users.length <= 1) return alert("Must have at least one user");
-      let updated = users.filter(u => u.id !== item.id);
-      setUsers(updated);
-      await db.saveUsers(updated);
-    } else {
-      let updatedConfig = await db.getConfig();
-      if (manageTarget === 'categories') updatedConfig.categories = updatedConfig.categories.filter(x => x !== item);
-      else if (manageTarget === 'zones') updatedConfig.zones = updatedConfig.zones.filter(x => x !== item);
-      else if (manageTarget === 'departments') updatedConfig.departments = updatedConfig.departments.filter(x => x !== item);
-      setAvailableCategories([...updatedConfig.categories]);
-      setAvailableZones([...updatedConfig.zones]);
-      setAvailableDepartments([...updatedConfig.departments]);
-      await db.saveConfig(updatedConfig);
-    }
-    setIsSyncing(false);
-    notify("Deleted Successfully");
-  };
-
-  const handlePasswordUpdate = async () => {
-    if (newPassword.length < 4) return alert("Security key must be at least 4 chars");
-    await db.setAdminPassword(newPassword);
-    setAdminPassword(newPassword);
-    setNewPassword('');
-    setIsPasswordChangeOpen(false);
-    notify("Key Updated");
-  };
-
-  const handleConnectTurso = async () => {
-    const cleanUrl = tursoUrlInput.trim();
-    if (!cleanUrl) return alert("Enter a valid Turso database URL");
-    setIsSyncing(true);
+  const handleCloudConnect = async () => {
+    if (!tursoUrl || !tursoToken || isGuest) return;
+    setIsLoadingData(true);
     try {
-      await db.syncLocalToCloud(cleanUrl, tursoTokenInput.trim() || null);
-      await loadAppData();
-      setIsTursoConfigOpen(false);
-      notify("Turso Cloud Synced");
-    } catch (e) {
-      console.error(e);
-      alert("Failed to connect to Turso. Check your credentials.");
+      const success = await db.setCredentials(tursoUrl, tursoToken);
+      if (success) {
+        await loadAppData();
+        setIsCloudSetupOpen(false);
+        notify("Cloud Synced Successfully");
+      } else {
+        notifyError("Connection Failed");
+      }
+    } catch (e: any) {
+      notifyError(`Connection Error: ${e.message}`);
     } finally {
-      setIsSyncing(false);
+      setIsLoadingData(false);
     }
   };
 
-  const handleDisconnectTurso = async () => {
-    if (confirm("Switch back to Local mode? Cloud data will remain on Turso but app will use LocalStorage.")) {
-      await db.setTursoConfig(null, null);
+  const handleCloudDisconnect = async () => {
+    if (isGuest) return;
+    if (confirm("Reset to default production database?")) {
+      await db.disconnectCloud();
+      setTursoUrl("libsql://database-red-tree-vercel-icfg-tf7wnf43zngjwvbur4t9rp6n.aws-us-east-1.turso.io");
+      setTursoToken("eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzA4ODM2NDEsImlkIjoiZGUyZjlkZTgtOTEzYS00YzE1LThlMzMtMzhlYTMzMGFkNzI5IiwicmlkIjoiYzNhZDBiYmMtNTI0My00NTQzLThhOTgtYmI4MjI2ZDc2MjUzIn0.8gOpqGrKkuO5LTP8PvBWZJjMskckorIyyPedTVeIZHSXqCtebkp2AQvl-2VPRZchEtizL8MJxQTZR2Da4tj4CQ");
       await loadAppData();
-      setIsTursoConfigOpen(false);
-      notify("Switched to Local Mode");
+      setIsCloudSetupOpen(false);
+      notify("Cloud Disconnected");
     }
   };
 
-  const handleOpenTursoConfig = () => {
-    const cfg = db.getCloudConfig();
-    setTursoUrlInput(cfg.url);
-    setTursoTokenInput(cfg.token);
-    setIsTursoConfigOpen(true);
+  const showLowParReport = () => {
+    const lowParItems = (inventory || []).filter(item => {
+      const totalStock = Object.values(item.stock || {}).reduce((a, b) => a + b, 0);
+      return totalStock <= (item.parStock || 0);
+    }).sort((a, b) => new Date(a.earliestExpiry).getTime() - new Date(b.earliestExpiry).getTime());
+    setReportModal({ open: true, title: 'Low Par Stock Items', items: lowParItems });
   };
 
-  const filteredItems = useMemo(() => {
-    return inventory.filter(i => {
-      const searchLower = searchTerm.toLowerCase();
-      const matchesSearch = i.name.toLowerCase().includes(searchLower) || i.sku.toLowerCase().includes(searchLower);
-      const matchesZone = selectedZone === GLOBAL_ZONE_KEY || (i.stock[selectedZone] > 0);
-      return matchesSearch && matchesZone;
-    });
-  }, [inventory, searchTerm, selectedZone]);
+  const showNearExpiryReport = () => {
+    const nearExpiryItems = (inventory || []).filter(item => {
+      if (item.earliestExpiry === '2099-12-31') return false;
+      const expiryDate = new Date(item.earliestExpiry);
+      const diffDays = Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+      return diffDays <= 90;
+    }).sort((a, b) => new Date(a.earliestExpiry).getTime() - new Date(b.earliestExpiry).getTime());
+    setReportModal({ open: true, title: 'Near Expiry Audit', items: nearExpiryItems });
+  };
 
-  const stockValue = useMemo(() => inventory.reduce((total, item) => total + (item.batches.reduce((s,b)=>s+b.quantity,0) * (item.unitCost || 0)), 0), [inventory]);
-  const belowParItems = useMemo(() => inventory.filter(i => {
-    const totalStock = i.batches.reduce((s, b) => s + b.quantity, 0);
-    return totalStock <= i.parStock * 0.4;
-  }), [inventory]);
-  const expiringSoonItems = useMemo(() => inventory.filter(i => {
-    let diff = Math.ceil((new Date(i.earliestExpiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    return diff <= 90 && diff > 0;
-  }), [inventory]);
-  
-  const expiredItems = useMemo(() => inventory.filter(i => {
-    if (i.earliestExpiry === '2099-12-31') return false;
-    let diff = Math.ceil((new Date(i.earliestExpiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    return diff <= 0;
-  }), [inventory]);
+  const exportReportToCSV = (title: string, items: InventoryItem[]) => {
+    const headers = ['SKU', 'Name', 'Unit Cost', 'Stock', 'Par Stock', 'Expiry'];
+    const rows = (items || []).map(i => [
+      i.sku, 
+      i.name, 
+      i.unitCost, 
+      Object.values(i.stock || {}).reduce((a, b) => (a as number) + (b as number), 0), 
+      i.parStock, 
+      i.earliestExpiry
+    ]);
+    const content = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const blob = new Blob([content], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Sunlight_${title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    notify("CSV Exported");
+  };
 
-  const receiveSuggestions = useMemo(() => {
-    if (!newItemData.name || newItemData.name.length < 1) return [];
-    return inventory.filter(i => i.name.toLowerCase().includes(newItemData.name!.toLowerCase())).slice(0, 5);
-  }, [inventory, newItemData.name]);
+  const stockValue = useMemo(() => {
+    return (inventory || []).reduce((total, item) => {
+      const totalQty = Object.values(item.stock || {}).reduce((sum, qty) => (sum as number) + (qty as number), 0);
+      return total + ((totalQty as number) * (item.unitCost || 0));
+    }, 0);
+  }, [inventory]);
 
-  let modalInputClass = "w-full p-4 border border-gray-100 rounded-2xl text-sm font-bold bg-gray-50 focus:border-[#800000] focus:bg-white outline-none transition-all placeholder:text-gray-300";
-  let labelClass = "text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1 mb-2 block";
+  const filteredInventory = useMemo(() => (inventory || []).filter(i => {
+    const term = (searchTerm || '').toLowerCase().trim();
+    if (!term) {
+      const zoneMatch = selectedZone === GLOBAL_ZONE_KEY || ((i.stock?.[selectedZone] || 0) > 0);
+      const categoryMatch = selectedCategory === GLOBAL_CATEGORY_KEY || i.category === selectedCategory;
+      return zoneMatch && categoryMatch;
+    }
+    
+    const nameMatch = (i.name || '').toLowerCase().includes(term);
+    const skuMatch = (i.sku || '').toLowerCase().includes(term);
+    const zoneMatch = selectedZone === GLOBAL_ZONE_KEY || ((i.stock?.[selectedZone] || 0) > 0);
+    const categoryMatch = selectedCategory === GLOBAL_CATEGORY_KEY || i.category === selectedCategory;
+    
+    return (nameMatch || skuMatch) && zoneMatch && categoryMatch;
+  }), [inventory, searchTerm, selectedZone, selectedCategory]);
 
-  if (isLoadingData) {
+  const filteredLogs = useMemo(() => (transactions || []).filter(t => {
+    return logDeptFilter === 'All' || t.department === logDeptFilter;
+  }), [transactions, logDeptFilter]);
+
+  if (!appInit) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-[#800000] text-white">
-        <Loader2 className="w-12 h-12 animate-spin text-[#FFD700] mb-4" />
-        <BrandLogo scale="text-6xl" />
-        <p className="mt-8 text-[10px] font-black uppercase tracking-[0.4em] opacity-40 animate-pulse">Synchronizing with Turso Edge...</p>
-      </div>
-    );
-  }
-
-  if (isSplashVisible) {
-    return (
-      <div className={`h-full flex items-center justify-center p-4 bg-cover bg-center relative transition-all duration-700 ${isExitingSplash ? 'scale-110 opacity-0 blur-lg' : ''}`} style={{ backgroundImage: `url(${HOTEL_BG_URL})` }}>
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-        <div className="bg-[#800000]/30 backdrop-blur-md p-10 rounded-[4rem] shadow-2xl w-full max-sm text-center border border-white/20 relative z-10 animate-in fade-in flex flex-col items-center">
-          <BrandLogo className="scale-[1.8] drop-shadow-xl mb-4" />
-          <p className="text-white font-black uppercase tracking-[0.4em] text-[10px] opacity-90 mb-12">Warehouse Management</p>
-          <button onClick={handleEnterApp} className="w-[80%] py-3 border border-[#FFD700]/30 text-[#FFD700] rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] transition-all hover:bg-[#FFD700]/5 flex items-center justify-center gap-2 group">
-            Enter Dashboard <ArrowRight size={13} className="group-hover:translate-x-1 transition-transform" />
-          </button>
+      <div className="fixed inset-0 bg-[#800000] flex flex-col items-center justify-center">
+        <div className="animate-pulse flex flex-col items-center">
+          <BrandLogo scale="text-7xl" subScale="text-xs" />
+          <div className="mt-12 flex flex-col items-center gap-2">
+            <Loader2 className="text-[#FFD700] animate-spin" size={32} />
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#FFD700]/60">Booting Turso Environment...</span>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 text-gray-900 overflow-hidden pt-safe">
-      <div className="fixed -left-[2000px] top-0 pointer-events-none">
-        <ReceiptContent ref={receiptRef} lastTxId={lastTxId} receiverName={receiverName} receiverDept={receiverDept} currentUser={currentUser} cart={cart} signature={signature} />
-      </div>
-
+    <div className="flex flex-col h-full bg-[#f9fafb] text-gray-900 overflow-hidden pt-safe">
       {showAddSuccess && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] bg-gray-900/90 backdrop-blur text-white px-6 py-3 rounded-full shadow-2xl font-black text-[10px] flex items-center gap-3 animate-in slide-in-from-top-4">
-          <CheckCircle2 size={16} className="text-green-400" /> <span className="uppercase tracking-widest">{showAddSuccess}</span>
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[2000] bg-[#800000] text-white px-6 py-3 rounded-2xl shadow-2xl font-black uppercase text-[10px] tracking-widest flex items-center gap-3 animate-in slide-in-from-top duration-300">
+           <CheckCircle2 size={16} /> {showAddSuccess}
         </div>
       )}
 
-      <header className="bg-[#800000] text-white px-6 shadow-lg flex justify-between items-center h-16 shrink-0 z-50">
-        <BrandLogo className="scale-75 -ml-4" />
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col items-end mr-1">
-             <div className="flex items-center gap-1.5 mb-0.5">
-               <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-amber-400 animate-spin' : isCloudMode ? 'bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.6)]' : 'bg-green-400'}`} />
-               <span className={`text-[6px] font-black uppercase tracking-[0.15em] ${isSyncing ? 'text-amber-300' : isCloudMode ? 'text-blue-300' : 'text-green-300/80'}`}>{isSyncing ? 'Syncing...' : isCloudMode ? 'Turso Connected' : 'Local Active'}</span>
-             </div>
-             <span className="text-[9px] font-black uppercase tracking-wider truncate max-w-[80px]">{currentUser?.name}</span>
+      {showError && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[2000] bg-red-600 text-white px-6 py-3 rounded-2xl shadow-2xl font-black uppercase text-[10px] tracking-widest flex items-center gap-3 animate-in slide-in-from-top duration-300">
+           <AlertCircle size={16} /> {showError}
+        </div>
+      )}
+
+      {isUserSelectorOpen && (
+        <div className="fixed inset-0 z-[3000] bg-[#800000] flex items-center justify-center p-6">
+          <div className="w-full max-sm:w-[95%] max-w-sm bg-white rounded-[2.5rem] p-8 shadow-2xl space-y-8 animate-in zoom-in-95">
+            <div className="text-center">
+              <BrandLogo color="#800000" scale="text-6xl" subScale="text-[9px]" />
+              <div className="h-px bg-gray-100 w-full mt-6 mb-6"></div>
+              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Profile Selection</h3>
+            </div>
+            
+            <div className="bg-gray-50 rounded-[2rem] p-4 grid grid-cols-1 gap-4 border border-gray-100 shadow-inner">
+              <button 
+                onClick={() => {
+                  setPendingUser({ id: 'staff', name: 'HOTEL STAFF', role: 'Staff' });
+                  setIsPasswordPromptOpen(true);
+                }}
+                className="p-5 rounded-3xl bg-white border border-transparent hover:border-[#800000]/20 transition-all flex items-center justify-between group shadow-sm active:scale-95"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-2.5 bg-red-50 text-[#800000] rounded-2xl shadow-sm"><Shield size={22} strokeWidth={2.5} /></div>
+                  <div className="text-left">
+                    <p className="text-[13px] font-black text-gray-900 uppercase">Hotel Staff</p>
+                    <p className="text-[8px] font-bold uppercase text-gray-400 tracking-wider">Full Operational Access</p>
+                  </div>
+                </div>
+                <Lock size={16} className="text-gray-300" />
+              </button>
+              
+              <button 
+                onClick={() => {
+                  setCurrentUser({ id: 'guest', name: 'GUEST VIEWER', role: 'Guest' });
+                  setIsUserSelectorOpen(false);
+                }}
+                className="p-5 rounded-3xl bg-white border border-transparent hover:border-gray-200 transition-all flex items-center justify-between group shadow-sm active:scale-95"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-2.5 bg-gray-50 text-gray-400 rounded-2xl shadow-sm"><Eye size={22} strokeWidth={2.5} /></div>
+                  <div className="text-left">
+                    <p className="text-[13px] font-black text-gray-900 uppercase">Guest Viewer</p>
+                    <p className="text-[8px] font-bold uppercase text-gray-400 tracking-wider">View-only Access</p>
+                  </div>
+                </div>
+                <ArrowRight size={16} className="text-gray-200" />
+              </button>
+            </div>
           </div>
-          <div className="flex gap-2">
+        </div>
+      )}
+
+      {isPasswordPromptOpen && (
+        <div className="fixed inset-0 z-[3100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+          <div className={`bg-white rounded-[2rem] p-8 w-full max-sm:w-[95%] max-w-sm text-center space-y-6 border-4 border-[#800000]/10 ${passwordError ? 'animate-shake' : ''}`}>
+            <div className="w-14 h-14 bg-[#800000]/5 text-[#800000] rounded-full flex items-center justify-center mx-auto"><ShieldCheck size={28} /></div>
+            <div className="space-y-1"><h3 className="text-sm font-black uppercase tracking-widest">Verify Access</h3><p className="text-[8px] font-bold text-gray-400 uppercase">Enter Shared Password</p></div>
+            <input autoFocus type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleVerifyPassword()} className="w-full text-center text-4xl font-black tracking-[0.4em] outline-none border-b-2 border-[#800000] pb-1" />
+            <div className="flex gap-4"><button onClick={() => { setIsPasswordPromptOpen(false); setPendingUser(null); }} className="flex-1 py-3 text-[10px] font-black text-gray-400 uppercase">Cancel</button><button onClick={handleVerifyPassword} className="flex-1 py-3 bg-[#800000] text-white rounded-xl font-black uppercase text-[10px] shadow-lg">Unlock</button></div>
+          </div>
+        </div>
+      )}
+
+      <header className="bg-[#800000] text-white px-5 shadow-lg flex justify-between items-center h-14 shrink-0 z-50">
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={() => setView('dashboard')} className="active:scale-95 transition-transform"><BrandLogo scale="text-3xl" subScale="text-[5px]" className="items-start" /></button>
+        </div>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button 
-              onClick={handleManualSync} 
-              disabled={isSyncing}
-              title="Manual Sync"
-              className={`bg-white/10 p-2.5 rounded-xl hover:bg-white/20 active:scale-90 transition-all ${isSyncing ? 'opacity-50' : ''}`}
+              onClick={() => loadAppData()} 
+              className={`bg-white/10 p-2 rounded-lg hover:bg-white/20 transition-all ${isSyncing ? 'animate-spin' : ''}`}
             >
-              <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
+              <RefreshCw size={14} />
             </button>
-            <button onClick={() => setIsUserSelectorOpen(true)} className="bg-white/10 p-2.5 rounded-xl hover:bg-white/20 active:scale-90 transition-all">
-              <RotateCcw size={16} />
+            <button onClick={() => setIsUserSelectorOpen(true)} className="bg-white/10 p-2 rounded-lg hover:bg-white/20 transition-all">
+              <RotateCcw size={14} />
             </button>
           </div>
+          <span className="text-[10px] font-black uppercase tracking-wider truncate max-w-[100px] ml-1">{currentUser?.name || 'HOTEL STAFF'}</span>
         </div>
       </header>
 
-      {(view === 'inventory' || view === 'history') && (
-        <div className="bg-white border-b shadow-sm z-40 px-4 py-2 flex items-center gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-            <input type="text" placeholder="Search by name or SKU..." value={view === 'inventory' ? searchTerm : historySearch} onChange={e => view === 'inventory' ? setSearchTerm(e.target.value) : setHistorySearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border rounded-xl text-xs font-bold outline-none focus:border-[#800000] bg-gray-50" />
-          </div>
-          <div className="relative flex items-center">
-            <select value={selectedZone} onChange={e => setSelectedZone(e.target.value)} className="text-[10px] font-black border rounded-xl pl-8 pr-3 py-2 bg-gray-50 outline-none appearance-none cursor-pointer">
-              <option value={GLOBAL_ZONE_KEY}>All Zones</option>
-              {availableZones.map(z => <option key={z} value={z}>{z.split(' (')[0]}</option>)}
-            </select>
-            <div className="absolute left-2.5 text-gray-400">{selectedZone === GLOBAL_ZONE_KEY ? <Globe size={14} /> : <MapPin size={14} />}</div>
-          </div>
-        </div>
-      )}
-
-      <main className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-6 pb-24">
+      <main className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-3 pb-24">
         {view === 'dashboard' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-3">
-              <StatCard label="Stock Value" value={`₱${(stockValue/1000).toFixed(1)}K`} icon={<Sparkles size={12}/>} />
-              <StatCard label="Below PAR" value={belowParItems.length} icon={<TrendingDown size={12}/>} />
-              <StatCard label="Expiring" value={expiringSoonItems.length} icon={<Clock size={12}/>} />
-              <StatCard label="Zones" value={availableZones.length} icon={<Building size={12}/>} />
+          <div className="space-y-3 animate-in fade-in duration-500">
+            <div className="grid grid-cols-2 gap-2">
+              <StatCard label="Stock Value" value={`₱${(stockValue / 1000).toFixed(1)}K`} icon={<Sparkles size={10}/>} />
+              <StatCard label="Pending" value={pendingIssues?.length || 0} icon={<ClipboardList size={10}/>} />
             </div>
 
-            {(expiredItems.length > 0 || belowParItems.length > 0 || expiringSoonItems.length > 0) && (
-              <section className="animate-in slide-in-from-bottom-2 duration-500">
-                <div className="flex items-center justify-between px-1 mb-3">
-                   <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Operational Alerts</h4>
-                   <span className="text-[8px] font-black text-[#800000] uppercase bg-[#800000]/5 px-2 py-0.5 rounded-full">Requires Attention</span>
-                </div>
-                <div className="grid grid-cols-1 gap-3">
-                  {expiredItems.slice(0, 3).map(item => (
-                    <div key={`alert-exp-${item.id}`} className="bg-white border-2 border-red-100 rounded-3xl p-4 shadow-sm flex items-center gap-4 group hover:border-red-200 transition-all">
-                      <div className="p-3 bg-red-50 text-red-500 rounded-2xl">
-                        <CalendarClock size={20} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-[8px] font-black text-red-400 uppercase tracking-widest">Expired Item</span>
-                        </div>
-                        <h5 className="text-sm font-black text-gray-900 truncate">{item.name}</h5>
-                        <p className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">Expired on {item.earliestExpiry}</p>
-                      </div>
-                      <button 
-                        onClick={() => { setSearchTerm(item.sku); setView('inventory'); }}
-                        className="p-2 bg-gray-50 text-gray-400 rounded-xl hover:text-[#800000] hover:bg-[#800000]/5 transition-all"
-                      >
-                        <ChevronRight size={18} />
-                      </button>
-                    </div>
-                  ))}
+            <div className="bg-white p-5 rounded-[1.5rem] border shadow-sm border-gray-100">
+              <h4 className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-4 text-center">Operation Centers</h4>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button 
+                  disabled={isGuest}
+                  onClick={() => setIsAddingItem(true)} 
+                  className="flex flex-col items-center gap-2 p-4 bg-green-50 rounded-2xl border border-green-100 active:scale-95 transition-all disabled:opacity-30"
+                >
+                  <div className="p-2.5 bg-white rounded-xl text-green-600 shadow-sm"><PlusCircle size={20}/></div>
+                  <span className="text-[9px] font-black uppercase text-green-900 tracking-wider">Receive</span>
+                </button>
+                <button 
+                  onClick={() => setView('inventory')} 
+                  className="flex flex-col items-center gap-2 p-4 bg-blue-50 rounded-2xl border border-blue-100 group active:scale-95 transition-all"
+                >
+                  <div className="p-2.5 bg-white rounded-xl text-blue-600 shadow-sm"><Search size={20}/></div>
+                  <span className="text-[9px] font-black uppercase text-blue-900 tracking-wider">Issue</span>
+                </button>
+              </div>
+            </div>
 
-                  {belowParItems.slice(0, 3).map(item => {
-                    const total = item.batches.reduce((s,b)=>s+b.quantity,0);
-                    return (
-                      <div key={`alert-par-${item.id}`} className="bg-white border-2 border-amber-100 rounded-3xl p-4 shadow-sm flex items-center gap-4 group hover:border-amber-200 transition-all">
-                        <div className="p-3 bg-amber-50 text-amber-500 rounded-2xl">
-                          <PackageX size={20} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest">Restock Required</span>
-                          </div>
-                          <h5 className="text-sm font-black text-gray-900 truncate">{item.name}</h5>
-                          <p className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">Available: {total} / PAR: {item.parStock} {item.uom}</p>
-                        </div>
-                        <button 
-                          onClick={() => { setSearchTerm(item.sku); setView('inventory'); }}
-                          className="p-2 bg-gray-50 text-gray-400 rounded-xl hover:text-[#800000] hover:bg-[#800000]/5 transition-all"
-                        >
-                          <ChevronRight size={18} />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
-
-            <div className="bg-white p-6 rounded-3xl border shadow-sm">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Quick Actions</h4>
-              <div className="grid grid-cols-4 gap-4">
-                <button onClick={() => setView('inventory')} className="flex flex-col items-center gap-2">
-                  <div className="p-3 bg-blue-50 text-blue-600 rounded-full"><Package size={20}/></div>
-                  <span className="text-[8px] font-black uppercase">Stock</span>
+            <div className="bg-white p-5 rounded-[1.5rem] border shadow-sm border-gray-100">
+              <h4 className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-4 text-center">Audits & Tools</h4>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={showLowParReport} className="flex items-center gap-2.5 p-3 bg-purple-50 rounded-xl border border-purple-100 active:scale-95 transition-all">
+                  <div className="p-2 bg-white rounded-lg text-purple-600 shadow-sm"><TrendingDown size={14}/></div>
+                  <p className="text-[9px] font-black uppercase text-purple-900 leading-tight">Low Stock</p>
                 </button>
-                <button onClick={handleOpenReceive} className="flex flex-col items-center gap-2">
-                  <div className="p-3 bg-green-50 text-green-600 rounded-full"><PlusCircle size={20}/></div>
-                  <span className="text-[8px] font-black uppercase">Add</span>
+                <button onClick={() => loadAppData()} className="flex items-center gap-2.5 p-3 bg-blue-50 rounded-xl border border-blue-100 active:scale-95 transition-all">
+                  <div className={`p-2 bg-white rounded-lg text-blue-600 shadow-sm ${isSyncing ? 'animate-spin' : ''}`}><RefreshCw size={14}/></div>
+                  <p className="text-[9px] font-black uppercase text-blue-900 leading-tight">Sync Data</p>
                 </button>
-                <button onClick={() => setIsTransferringStock(true)} className="flex flex-col items-center gap-2">
-                  <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl"><ArrowRightLeft size={20}/></div>
-                  <span className="text-[8px] font-black uppercase">Move</span>
+                <button onClick={showNearExpiryReport} className="flex items-center gap-2.5 p-3 bg-amber-50 rounded-xl border border-amber-100 active:scale-95 transition-all">
+                  <div className="p-2 bg-white rounded-lg text-amber-600 shadow-sm"><CalendarClock size={14}/></div>
+                  <p className="text-[9px] font-black uppercase text-amber-900 leading-tight">Near Exp</p>
                 </button>
-                <button onClick={() => setView('history')} className="flex flex-col items-center gap-2">
-                  <div className="p-3 bg-purple-50 text-purple-600 rounded-full"><History size={20}/></div>
-                  <span className="text-[8px] font-black uppercase">Logs</span>
+                <button onClick={() => setView('history')} className="flex items-center gap-2.5 p-3 bg-gray-50 rounded-xl border border-gray-100 active:scale-95 transition-all">
+                  <div className="p-2 bg-white rounded-lg text-gray-600 shadow-sm"><History size={14}/></div>
+                  <p className="text-[9px] font-black uppercase text-gray-900 leading-tight">Logs</p>
                 </button>
               </div>
             </div>
@@ -943,837 +689,809 @@ const App: React.FC = () => {
         )}
 
         {view === 'inventory' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {filteredItems.map(item => (
-              <ItemCard 
-                key={item.id} 
-                item={item} 
-                selectedZone={selectedZone as any} 
-                onIssue={addToCart} 
-                onEdit={(i) => { setItemToEdit(i); setIsEditingInventoryItem(true); }} 
-              />
-            ))}
+          <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+             <div className="flex flex-col gap-3 sticky top-0 bg-[#f9fafb] z-10 -mx-3 px-3 pb-3 pt-1">
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2">
+                    <Search className="text-gray-400" size={24} />
+                  </div>
+                  <input 
+                    type="text" 
+                    placeholder="Search SKU or Name..." 
+                    value={searchTerm} 
+                    onChange={e => setSearchTerm(e.target.value)} 
+                    className="w-full pl-14 pr-4 py-5 bg-gray-100 border-none rounded-2xl text-2xl font-black outline-none focus:ring-2 focus:ring-[#800000]/5 transition-all uppercase placeholder:normal-case placeholder:font-bold placeholder:text-gray-400 shadow-inner" 
+                  />
+                </div>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+                   <button 
+                     onClick={() => setSelectedCategory(GLOBAL_CATEGORY_KEY)} 
+                     className={`shrink-0 px-6 py-3 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${
+                       selectedCategory === GLOBAL_CATEGORY_KEY 
+                       ? 'bg-[#800000] text-white shadow-lg' 
+                       : 'bg-white text-gray-400 border border-gray-100'
+                     }`}
+                   >
+                     All Items
+                   </button>
+                   {(availableCategories || []).map(cat => (
+                     <button 
+                       key={cat} 
+                       onClick={() => setSelectedCategory(cat)} 
+                       className={`shrink-0 px-6 py-3 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${
+                         selectedCategory === cat 
+                         ? 'bg-[#800000] text-white shadow-lg' 
+                         : 'bg-white text-gray-400 border border-gray-100'
+                       }`}
+                     >
+                       {cat}
+                     </button>
+                   ))}
+                </div>
+             </div>
+             
+             <div className="grid grid-cols-1 gap-2.5 mt-1">
+               {(filteredInventory || []).map(item => (
+                 <ItemCard 
+                    key={item.id} 
+                    item={item} 
+                    selectedZone={selectedZone as any} 
+                    onIssue={(i, q, forcedZone) => {
+                      if (isGuest) return;
+                      setCart(prev => {
+                        const existing = (prev || []).find(p => p.itemId === i.id);
+                        if (existing) return (prev || []).map(p => p.itemId === i.id ? { ...p, quantity: p.quantity + q } : p);
+                        const targetZone = forcedZone || (selectedZone === GLOBAL_ZONE_KEY ? (availableZones[0] || Zone.MAIN) : selectedZone);
+                        return [...(prev || []), { itemId: i.id, sku: i.sku, name: i.name, quantity: q, zone: targetZone, uom: i.uom }];
+                      });
+                      notify("Added to Cart");
+                    }} 
+                    onEdit={(i) => { if (!isGuest) setIsEditingItem(i); }} 
+                 />
+               ))}
+               {filteredInventory?.length === 0 && <div className="py-24 text-center text-gray-200 uppercase font-black text-[10px] tracking-[0.2em]">No registry matches found</div>}
+             </div>
+          </div>
+        )}
+
+        {view === 'pending' && (
+          <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+             <div className="text-center mb-4 pt-2">
+                <h3 className="text-sm font-black uppercase tracking-widest text-[#800000]">Release Queue</h3>
+             </div>
+             {(pendingIssues || []).map(req => (
+               <div key={req.id} className="bg-white border rounded-2xl p-4 shadow-sm border-gray-100 relative group overflow-hidden">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <p className="text-[8px] font-black text-gray-300 uppercase tracking-widest">{req.id}</p>
+                      <h4 className="text-[13px] font-black text-gray-900 uppercase">{req.department}</h4>
+                      <p className="text-[9px] font-bold text-gray-400 mt-0.5">{new Date(req.timestamp).toLocaleDateString()} at {new Date(req.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
+                    </div>
+                    <button 
+                      onClick={() => handleDeletePending(req.id)} 
+                      className="text-gray-300 hover:text-red-500 p-2.5 transition-colors active:scale-95"
+                      title="Remove from queue"
+                    >
+                      <Trash2 size={20}/>
+                    </button>
+                  </div>
+                  <div className="space-y-1 mb-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                    {(req.items || []).map((item, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-[10px]">
+                         <span className="font-bold text-gray-700 truncate pr-4 uppercase">{item.name}</span>
+                         <span className="font-black text-[#800000] shrink-0">{item.quantity} {item.uom}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <button 
+                    disabled={isGuest}
+                    onClick={() => { setActiveRequestToFinalize(req); setIsFinalizingIssue(true); }}
+                    className="w-full py-4 bg-[#800000] text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-md flex items-center justify-center gap-2 active:scale-95 disabled:opacity-30 transition-all"
+                  >
+                    <ShieldCheck size={14} /> Finalize Release
+                  </button>
+               </div>
+             ))}
+             {pendingIssues?.length === 0 && <div className="py-24 text-center text-gray-200 uppercase font-black text-[9px] tracking-widest">Queue is clear</div>}
           </div>
         )}
 
         {view === 'history' && (
-          <div className="bg-white border rounded-2xl overflow-hidden shadow-sm">
-            <table className="w-full text-left text-[11px]">
-               <thead className="bg-gray-50 border-b font-black uppercase text-gray-400">
-                 <tr>
-                   <th className="px-4 py-3">Date</th>
-                   <th className="px-4 py-3">Item</th>
-                   <th className="px-4 py-3">Dept</th>
-                   <th className="px-4 py-3 text-right">Qty</th>
-                 </tr>
-               </thead>
-               <tbody className="divide-y">
-                 {transactions.filter(t => t.itemName.toLowerCase().includes(historySearch.toLowerCase())).map(t => (
-                   <tr key={t.id} className="hover:bg-gray-50/50 transition-colors">
-                     <td className="px-4 py-3 font-black text-gray-400">{new Date(t.timestamp).toLocaleDateString([], {month:'short', day:'numeric'})}</td>
-                     <td className="px-4 py-3 font-bold truncate max-w-[120px]">{t.itemName}</td>
-                     <td className="px-4 py-3 text-[9px] font-black uppercase text-gray-300">{t.department || 'WH'}</td>
-                     <td className="px-4 py-3 text-right font-black text-[#800000] tabular-nums">{t.qty}</td>
-                   </tr>
-                 ))}
-               </tbody>
-            </table>
+          <div className="space-y-3 animate-in slide-in-from-right-4 duration-300">
+             <div className="flex justify-between items-center mb-1 pt-2">
+                <h3 className="text-sm font-black uppercase tracking-widest text-[#800000]">Activity Logs</h3>
+                <select 
+                  value={logDeptFilter} 
+                  onChange={e => setLogDeptFilter(e.target.value)}
+                  className="bg-white border rounded-xl px-2 py-2 text-[9px] font-black uppercase outline-none focus:border-[#800000]"
+                >
+                  <option value="All">All Departments</option>
+                  {(availableDepartments || []).map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+             </div>
+             <div className="bg-white border rounded-2xl overflow-hidden shadow-sm border-gray-100">
+                <table className="w-full text-left text-[10px]">
+                  <thead className="bg-gray-50 text-[8px] font-black uppercase tracking-widest text-gray-400 border-b">
+                    <tr>
+                      <th className="px-4 py-3">Transaction</th>
+                      <th className="px-3 py-3 text-right">Qty</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {(filteredLogs || []).map(t => (
+                      <tr key={t.id} className="active:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col">
+                             <p className="font-black text-gray-900 truncate max-w-[150px] uppercase">{t.itemName}</p>
+                             <p className="text-[7px] font-bold text-gray-300 uppercase tracking-tighter">
+                               {t.action} • {t.department?.slice(0, 10) || 'Warehouse'} • {new Date(t.timestamp).toLocaleDateString()}
+                             </p>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-right font-black text-[#800000]">
+                          {t.action === 'RECEIVE' ? '+' : '-'}{t.qty}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {filteredLogs?.length === 0 && <div className="py-20 text-center text-gray-200 uppercase font-black text-[9px]">No records found</div>}
+             </div>
+             {isStaff && (transactions?.length || 0) > 0 && (
+                <button onClick={handleClearHistory} className="w-full py-3 border border-red-50 text-red-300 rounded-xl text-[9px] font-black uppercase tracking-widest active:bg-red-50 transition-colors">Wipe System Logs</button>
+             )}
           </div>
         )}
 
         {view === 'settings' && (
-          <div className="space-y-6 pb-12">
-            <section className="space-y-3">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1 flex items-center gap-2">
-                <Activity size={12} className="text-[#800000]" /> Server Guard Monitoring
-              </h4>
-              <div className="bg-white border rounded-3xl p-6 shadow-sm space-y-6">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-end mb-1">
-                    <div className="flex items-center gap-2">
-                      <HardDrive size={14} className="text-gray-400" />
-                      <span className="text-[10px] font-black uppercase tracking-widest">Storage Footprint</span>
-                    </div>
-                    <span className="text-xs font-black tabular-nums">{storageUsageMB.toFixed(2)} MB / {STORAGE_LIMIT_MB} MB</span>
-                  </div>
-                  <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-                    <div className={`h-full transition-all duration-500 ${storageUsageMB > (STORAGE_LIMIT_MB * 0.8) ? 'bg-red-500' : 'bg-[#800000]'}`} style={{ width: `${Math.min(100, (storageUsageMB / STORAGE_LIMIT_MB) * 100)}%` }} />
-                  </div>
-                </div>
+          <div className="space-y-5 animate-in slide-in-from-right-4 duration-300 pb-10">
+            <div className="text-center pt-2">
+              <h3 className="text-sm font-black uppercase tracking-widest text-[#800000]">System Admin</h3>
+            </div>
 
-                <div className="pt-4 border-t grid grid-cols-1 gap-3">
-                   <button 
-                     onClick={handlePruneLogs}
-                     className="w-full p-4 bg-gray-50 border rounded-2xl flex items-center justify-between hover:bg-gray-100 transition-colors"
-                   >
-                     <div className="flex items-center gap-3">
-                       <Trash2 size={16} className="text-red-500" />
-                       <span className="text-[10px] font-black uppercase tracking-widest text-gray-600">Reclaim Storage (Purge Logs)</span>
-                     </div>
-                     <ChevronRight size={14} className="text-gray-300" />
-                   </button>
+            {/* Turso Database Engine Section */}
+            <div className="bg-white rounded-[1.5rem] border shadow-sm p-6 space-y-4 border-gray-100">
+              <div className="flex items-center justify-between border-b pb-2">
+                <div className="flex items-center gap-2">
+                  <Database size={16} className="text-[#800000]" />
+                  <h4 className="text-[9px] font-black uppercase tracking-widest text-gray-400">Database Engine</h4>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-amber-500 animate-pulse' : (dbStatus.connected ? 'bg-green-500' : 'bg-red-500')}`}></div>
+                  <span className={`text-[7px] font-black uppercase ${isSyncing ? 'text-amber-600' : (dbStatus.connected ? 'text-green-600' : 'text-red-600')}`}>
+                    {isSyncing ? 'Syncing...' : (dbStatus.connected ? 'Live (Turso)' : 'Disconnected')}
+                  </span>
                 </div>
               </div>
-            </section>
-
-            <section className="space-y-3">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1 flex items-center gap-2">
-                <FileText size={12} className="text-[#800000]" /> Reports & Data Export
-              </h4>
-              <div className="bg-white border rounded-3xl overflow-hidden shadow-sm divide-y">
-                <button onClick={exportConsumptionReport} className="w-full p-5 flex items-center justify-between hover:bg-gray-50">
-                  <div className="flex items-center gap-5">
-                    <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><FileSpreadsheet size={22} /></div>
-                    <div className="text-left">
-                       <span className="text-base font-black block">Consumption Summary</span>
-                       <span className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Excel compatible .CSV issue log</span>
-                    </div>
-                  </div>
-                  <Download size={20} className="text-gray-200" />
-                </button>
-                <button onClick={exportParReport} className="w-full p-5 flex items-center justify-between hover:bg-gray-50">
-                  <div className="flex items-center gap-5">
-                    <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl"><ClipboardList size={22} /></div>
-                    <div className="text-left">
-                       <span className="text-base font-black block">PAR Stock Audit</span>
-                       <span className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Full stock inventory vs baseline PAR</span>
-                    </div>
-                  </div>
-                  <Download size={20} className="text-gray-200" />
-                </button>
-                <button onClick={exportExpiryReport} className="w-full p-5 flex items-center justify-between hover:bg-gray-50">
-                  <div className="flex items-center gap-5">
-                    <div className="p-3 bg-red-50 text-red-600 rounded-2xl"><CalendarClock size={22} /></div>
-                    <div className="text-left">
-                       <span className="text-base font-black block">Expiration Audit</span>
-                       <span className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Detailed breakdown of batch life-cycles</span>
-                    </div>
-                  </div>
-                  <Download size={20} className="text-gray-200" />
-                </button>
-              </div>
-            </section>
-
-            <section className="space-y-3">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1 flex items-center gap-2">
-                <BrainCircuit size={12} className="text-[#800000]" /> Intelligence & Optimization
-              </h4>
-              <div className="bg-white border rounded-3xl overflow-hidden shadow-sm">
-                <button 
-                  onClick={calibrateParStocks} 
-                  disabled={isSyncing}
-                  className="w-full p-5 flex items-center justify-between hover:bg-gray-50 group"
-                >
-                  <div className="flex items-center gap-5">
-                    <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl">
-                      <Wand2 size={22} className={isSyncing ? 'animate-pulse' : ''} />
-                    </div>
-                    <div className="text-left">
-                       <span className="text-base font-black block">Calibrate PAR Stock</span>
-                       <span className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Recalculate based on 30-day consumption</span>
-                    </div>
-                  </div>
-                  {isSyncing ? <Loader2 size={16} className="animate-spin text-gray-200" /> : <ChevronRight size={20} className="text-gray-200" />}
-                </button>
-              </div>
-            </section>
-
-            <section className="space-y-3">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Cloud Integration</h4>
-              <div className="bg-white border rounded-3xl overflow-hidden shadow-sm divide-y">
-                <button onClick={handleOpenTursoConfig} className="w-full p-5 flex items-center justify-between hover:bg-gray-50">
-                  <div className="flex items-center gap-5">
-                    <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><Database size={22} /></div>
-                    <div className="text-left">
-                       <span className="text-base font-black block">Turso SQLite DB</span>
-                       <span className="text-[8px] font-black uppercase text-gray-400 tracking-widest">{isCloudMode ? 'Active Edge Connection' : 'Local-only Storage'}</span>
-                    </div>
-                  </div>
-                  <ArrowRight size={20} className="text-gray-200" />
-                </button>
-                {isCloudMode && (
-                  <button onClick={handleManualSync} disabled={isSyncing} className="w-full p-5 flex items-center justify-between hover:bg-gray-50 group">
-                    <div className="flex items-center gap-5">
-                      <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl"><RefreshCw size={22} className={isSyncing ? 'animate-spin' : ''} /></div>
-                      <div className="text-left">
-                         <span className="text-base font-black block">Force Reconciliation</span>
-                         <span className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Compare & Sync Latest Records</span>
-                      </div>
-                    </div>
-                    {isSyncing ? <Loader2 size={20} className="animate-spin text-gray-300" /> : <ChevronRight size={20} className="text-gray-200" />}
-                  </button>
-                )}
-              </div>
-            </section>
-
-            <section className="space-y-3">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Management</h4>
               <div className="space-y-3">
-                {[
-                  { id: 'users', label: 'Manage Users', icon: Users, count: users.length },
-                  { id: 'zones', label: 'Manage Zones', icon: MapPin, count: availableZones.length },
-                  { id: 'categories', label: 'Manage Categories', icon: Tag, count: availableCategories.length },
-                  { id: 'departments', label: 'Manage Departments', icon: Briefcase, count: availableDepartments.length }
-                ].map(item => (
-                  <button key={item.id} onClick={() => { setManageTarget(item.id as any); setIsManageModalOpen(true); }} className="w-full bg-white border p-5 rounded-3xl flex items-center justify-between shadow-sm hover:border-[#800000] transition-all">
-                    <div className="flex items-center gap-5">
-                      <div className="p-3 bg-gray-50 text-[#800000] rounded-2xl"><item.icon size={22} /></div>
-                      <span className="text-base font-black">{item.label}</span>
+                {dbStatus.error && (
+                  <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-start gap-2">
+                    <AlertCircle size={14} className="text-red-600 shrink-0 mt-0.5" />
+                    <p className="text-[8px] font-bold text-red-800 uppercase leading-tight">{dbStatus.error}</p>
+                  </div>
+                )}
+                
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between group cursor-pointer active:scale-[0.98] transition-all" onClick={() => setIsCloudSetupOpen(true)}>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white rounded-xl text-[#800000] shadow-sm"><Cloud size={18} /></div>
+                    <div className="text-left">
+                      <p className="text-[11px] font-black text-gray-800 uppercase leading-none mb-1">Configure Cloud Sync</p>
+                      <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Edge SQLite Integration</p>
                     </div>
-                    <span className="bg-gray-100 text-[10px] font-black px-2.5 py-1 rounded-full text-gray-400">{item.count}</span>
+                  </div>
+                  <ArrowRight size={14} className="text-gray-300 group-hover:text-[#800000] transition-colors" />
+                </div>
+                
+                <div className="flex gap-2">
+                  <button 
+                    onClick={async () => {
+                      if(!isStaff) return;
+                      await loadAppData();
+                    }}
+                    disabled={!isStaff || isSyncing}
+                    className="flex-1 py-4 bg-gray-50 rounded-xl border border-gray-100 text-[9px] font-black uppercase text-blue-600 active:bg-blue-50 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> Pull Cloud Data
                   </button>
-                ))}
+                  <button 
+                    onClick={handleForcePushSync}
+                    disabled={!isStaff || isSyncing}
+                    className="flex-1 py-4 bg-gray-50 rounded-xl border border-gray-100 text-[9px] font-black uppercase text-[#800000] active:bg-red-50 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <UploadCloud size={14} /> Push to Cloud
+                  </button>
+                </div>
+
+                <button 
+                  onClick={async () => {
+                    if(!isStaff) return;
+                    setIsSyncing(true);
+                    const test = await db.testConnection();
+                    setIsSyncing(false);
+                    if (test.success) {
+                      setDbStatus({ connected: true });
+                      notify("Connection Verified");
+                    } else {
+                      setDbStatus({ connected: false, error: test.error });
+                      notifyError("Test Failed: Check Credentials");
+                    }
+                  }}
+                  disabled={!isStaff || isSyncing}
+                  className="w-full py-3.5 bg-white rounded-xl border border-gray-100 text-[9px] font-black uppercase text-gray-400 active:bg-gray-50 transition-all shadow-sm"
+                >
+                  Test Server Connection
+                </button>
               </div>
-            </section>
+            </div>
+
+            <div className="bg-white rounded-[1.5rem] border shadow-sm p-6 space-y-4 border-gray-100">
+              <div className="flex items-center justify-between border-b pb-2">
+                <div className="flex items-center gap-2">
+                  <Lock size={16} className="text-[#800000]" />
+                  <h4 className="text-[9px] font-black uppercase tracking-widest text-gray-400">Security</h4>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <button 
+                  onClick={async () => {
+                    const newPw = prompt("Enter New Shared Password:");
+                    if(newPw) {
+                      await db.setAdminPassword(newPw);
+                      notify("Shared Password Updated");
+                    }
+                  }}
+                  className="w-full py-4 bg-gray-50 rounded-2xl border border-gray-100 text-[9px] font-black uppercase text-[#800000] active:bg-red-50 transition-all font-black"
+                >
+                  Change Shared Staff Password
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-[1.5rem] border shadow-sm p-6 space-y-4 border-gray-100">
+              <div className="flex items-center justify-between border-b pb-2">
+                <div className="flex items-center gap-2">
+                  <Settings size={16} className="text-[#800000]" />
+                  <h4 className="text-[9px] font-black uppercase tracking-widest text-gray-400">Inventory Setup</h4>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div>
+                   <label className="text-[8px] font-black text-gray-300 uppercase block mb-1.5 ml-1">Unit Departments</label>
+                   <div className="flex flex-wrap gap-1.5">
+                      {(availableDepartments || []).map(d => (
+                        <div key={d} className="flex items-center gap-1.5 bg-gray-50 border px-2.5 py-1.5 rounded-xl text-[9px] font-bold">
+                          {d} {isStaff && <button onClick={() => handleUpdateConfig('departments', availableDepartments.filter(x => x !== d))} className="text-gray-300 hover:text-red-500 transition-colors"><X size={10}/></button>}
+                        </div>
+                      ))}
+                      <button disabled={!isStaff} onClick={() => { const n = prompt("Dept Name:"); if(n) handleUpdateConfig('departments', [...availableDepartments, n]); }} className="p-1 text-[#800000] disabled:opacity-30"><PlusCircle size={18}/></button>
+                   </div>
+                </div>
+                <div>
+                   <label className="text-[8px] font-black text-gray-300 uppercase block mb-1.5 ml-1">Classifications</label>
+                   <div className="flex flex-wrap gap-1.5">
+                      {(availableCategories || []).map(c => (
+                        <div key={c} className="flex items-center gap-1.5 bg-gray-50 border px-2.5 py-1.5 rounded-xl text-[9px] font-bold">
+                          {c} {isStaff && <button onClick={() => handleUpdateConfig('categories', availableCategories.filter(x => x !== c))} className="text-gray-300 hover:text-red-500 transition-colors"><X size={10}/></button>}
+                        </div>
+                      ))}
+                      <button disabled={!isStaff} onClick={() => { const n = prompt("Category Name:"); if(n) handleUpdateConfig('categories', [...availableCategories, n]); }} className="p-1 text-[#800000] disabled:opacity-30"><PlusCircle size={18}/></button>
+                   </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </main>
 
-      <footer className="fixed bottom-0 left-0 right-0 bg-white border-t flex items-center justify-around h-20 pb-safe z-50">
-        {[
-          { id: 'dashboard', icon: LayoutDashboard, label: 'Dash' },
-          { id: 'inventory', icon: Package, label: 'Stock' },
+      {/* Turso Cloud Setup Modal */}
+      {isCloudSetupOpen && (
+        <div className="fixed inset-0 z-[4000] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-[400px] rounded-[3rem] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-8 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="p-3.5 border-2 border-blue-600 rounded-2xl text-blue-600">
+                  <Database size={24} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h2 className="text-[15px] font-black uppercase tracking-[0.15em] text-blue-600 leading-none mb-1.5">Turso Cloud Setup</h2>
+                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-blue-400">Edge SQLite Integration</p>
+                </div>
+              </div>
+              <button onClick={() => setIsCloudSetupOpen(false)} className="p-2 text-gray-400 hover:text-gray-900 transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-8 pb-8 space-y-8 no-scrollbar">
+              {/* Info Box */}
+              <div className="bg-blue-50/50 p-6 rounded-[2rem] flex gap-5 border border-blue-100/50">
+                <div className="shrink-0 pt-1">
+                  <Cloud size={24} className="text-blue-500" strokeWidth={2.5} />
+                </div>
+                <p className="text-[11px] font-black uppercase leading-[1.6] text-blue-800 tracking-wide">
+                  Configure Turso for real-time warehouse synchronization.
+                </p>
+              </div>
+
+              {/* Form Fields */}
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 ml-1">Database URL</label>
+                  <input 
+                    type="text" 
+                    value={tursoUrl}
+                    onChange={e => setTursoUrl(e.target.value)}
+                    className="w-full p-6 bg-gray-50 border border-gray-100 rounded-[1.8rem] font-bold text-sm text-gray-700 focus:border-blue-500 outline-none shadow-sm transition-all"
+                    placeholder="libsql://..."
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 ml-1">Auth Token</label>
+                  <input 
+                    type="password" 
+                    value={tursoToken}
+                    onChange={e => setTursoToken(e.target.value)}
+                    className="w-full p-6 bg-gray-50 border border-gray-100 rounded-[1.8rem] font-black text-4xl tracking-[0.5em] text-gray-700 focus:border-blue-500 outline-none shadow-sm transition-all"
+                  />
+                </div>
+              </div>
+
+              <a 
+                href="https://turso.tech/dashboard" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-blue-600 border-b-2 border-blue-100 pb-1 hover:border-blue-600 transition-all ml-1"
+              >
+                Get Credentials from Turso CLI/Dashboard <ExternalLink size={10} />
+              </a>
+
+              <div className="pt-4">
+                <button 
+                  onClick={handleCloudDisconnect}
+                  className="w-full py-5 border-2 border-red-50 text-red-500 rounded-[1.8rem] font-black uppercase text-[10px] tracking-widest hover:bg-red-50 active:scale-95 transition-all"
+                >
+                  Disconnect Cloud Storage
+                </button>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-8 border-t bg-gray-50/50 flex items-center justify-between shrink-0">
+              <button 
+                onClick={() => setIsCloudSetupOpen(false)}
+                className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400 px-4 py-2"
+              >
+                Back
+              </button>
+              <button 
+                onClick={handleCloudConnect}
+                disabled={isLoadingData}
+                className="bg-blue-600 text-white px-8 py-5 rounded-[1.5rem] font-black uppercase text-[11px] tracking-widest flex items-center gap-3 shadow-xl shadow-blue-500/20 active:scale-95 disabled:opacity-50 transition-all"
+              >
+                {isLoadingData ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} strokeWidth={3} />}
+                Connect & Sync
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Report / Audit Modal */}
+      {reportModal.open && (
+        <div className="fixed inset-0 z-[2500] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] p-6 shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="flex justify-between items-center mb-6 border-b pb-4">
+               <div>
+                 <h3 className="text-sm font-black uppercase tracking-widest text-[#800000]">{reportModal.title}</h3>
+                 <p className="text-[9px] font-bold text-gray-400 uppercase">{reportModal.items?.length || 0} items identified</p>
+               </div>
+               <button onClick={() => setReportModal({ ...reportModal, open: false })} className="p-2 bg-gray-50 rounded-xl text-gray-400"><X size={20}/></button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto no-scrollbar space-y-2 pb-4">
+              {(reportModal.items || []).map(item => (
+                <div key={item.id} className="p-4 bg-gray-50 border rounded-2xl flex justify-between items-center group">
+                  <div>
+                    <p className="text-[11px] font-black text-gray-800 uppercase leading-none mb-1.5">{item.name}</p>
+                    <p className="text-[8px] font-bold text-gray-400 uppercase">
+                      {Object.values(item.stock || {}).reduce((a, b) => (a as number) + (b as number), 0)} / {item.parStock} {item.uom}
+                    </p>
+                  </div>
+                  <div className={`text-[10px] font-black ${item.earliestExpiry !== '2099-12-31' ? 'text-amber-600' : 'text-gray-300'}`}>
+                    {item.earliestExpiry === '2099-12-31' ? 'INF' : new Date(item.earliestExpiry).toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
+              {reportModal.items?.length === 0 && <div className="py-20 text-center text-gray-200 uppercase font-black text-[10px]">No matches found</div>}
+            </div>
+
+            <div className="pt-4 border-t flex gap-3">
+              <button 
+                disabled={reportModal.items?.length === 0}
+                onClick={() => exportReportToCSV(reportModal.title, reportModal.items)}
+                className="flex-1 py-4 bg-[#800000] text-white rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all disabled:opacity-20"
+              >
+                <FileOutput size={16} /> Export to CSV
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Item Modal */}
+      {isEditingItem && (
+        <div className="fixed inset-0 z-[2000] bg-black/60 flex items-center justify-center p-2 backdrop-blur-sm overflow-y-auto">
+           <div className="bg-white w-full max-w-[340px] rounded-[2rem] p-6 space-y-4 animate-in zoom-in-95 my-auto shadow-2xl">
+              <div className="flex justify-between items-start border-b border-gray-50 pb-2">
+                <div>
+                  <h3 className="text-[14px] font-black uppercase tracking-widest text-[#800000]">SYSTEM REGISTRY</h3>
+                  <p className="text-[9px] font-bold text-gray-400 uppercase leading-none">SKU: {isEditingItem.sku}</p>
+                </div>
+                <button onClick={() => setIsEditingItem(null)} className="text-gray-300 p-1"><X size={20}/></button>
+              </div>
+
+              <div className="space-y-4 max-h-[60vh] overflow-y-auto no-scrollbar py-1">
+                 <div className="space-y-1">
+                    <label className="text-[9px] font-black uppercase text-gray-400 ml-1">REGISTRY NAME</label>
+                    <input type="text" value={isEditingItem.name} onChange={e => setIsEditingItem({...isEditingItem, name: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl font-black text-lg outline-none focus:border-[#800000] shadow-sm" />
+                 </div>
+                 
+                 <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                       <label className="text-[9px] font-black uppercase text-gray-400 ml-1">CLASSIFICATION</label>
+                       <select value={isEditingItem.category} onChange={e => setIsEditingItem({...isEditingItem, category: e.target.value})} className="w-full px-3 py-3 bg-gray-50 border border-gray-100 rounded-2xl font-black text-base uppercase focus:border-[#800000] outline-none shadow-sm">
+                          {(availableCategories || []).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                       </select>
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-[9px] font-black uppercase text-gray-400 ml-1">UOM</label>
+                       <input type="text" value={isEditingItem.uom} onChange={e => setIsEditingItem({...isEditingItem, uom: e.target.value})} className="w-full px-3 py-3 bg-gray-50 border border-gray-100 rounded-2xl font-black text-base focus:border-[#800000] outline-none uppercase shadow-sm" />
+                    </div>
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                       <label className="text-[9px] font-black uppercase text-gray-400 ml-1">SAFETY PAR</label>
+                       <input type="number" value={isEditingItem.parStock} onChange={e => setIsEditingItem({...isEditingItem, parStock: Number(e.target.value)})} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl font-black text-xl focus:border-[#800000] outline-none shadow-sm" />
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-[9px] font-black uppercase text-gray-400 ml-1">BASE COST</label>
+                       <input type="number" value={isEditingItem.unitCost} onChange={e => setIsEditingItem({...isEditingItem, unitCost: Number(e.target.value)})} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl font-black text-xl focus:border-[#800000] outline-none shadow-sm" />
+                    </div>
+                 </div>
+
+                 <div className="space-y-3 pt-2 border-t border-gray-50">
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-[#800000]">ACTIVE STOCK BATCHES</h4>
+                    {(isEditingItem.batches || []).map((batch, idx) => (
+                      <div key={batch.id} className="bg-gray-50 p-4 rounded-3xl space-y-3 border border-gray-100 relative shadow-sm">
+                        <div className="flex justify-between items-center px-1">
+                           <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">BATCH REF: {batch.id.split('-').pop()}</span>
+                           <button onClick={() => setIsEditingItem({ ...isEditingItem, batches: (isEditingItem.batches || []).filter((_, i) => i !== idx) })} className="text-red-400 hover:text-red-600"><Trash2 size={16} /></button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                           <div className="space-y-1">
+                             <label className="text-[8px] font-black text-gray-400 uppercase ml-1">QTY</label>
+                             <input type="number" value={batch.quantity} onChange={e => {
+                                 const updated = [...(isEditingItem.batches || [])];
+                                 updated[idx] = { ...batch, quantity: Number(e.target.value) };
+                                 setIsEditingItem({ ...isEditingItem, batches: updated });
+                               }} className="w-full px-4 py-3 bg-white border border-gray-100 rounded-2xl text-2xl font-black outline-none focus:border-[#800000]" />
+                           </div>
+                           <div className="space-y-1">
+                             <label className="text-[8px] font-black text-gray-400 uppercase ml-1">ZONE</label>
+                             <select value={batch.zone} onChange={e => {
+                                 const updated = [...(isEditingItem.batches || [])];
+                                 updated[idx] = { ...batch, zone: e.target.value };
+                                 setIsEditingItem({ ...isEditingItem, batches: updated });
+                               }} className="w-full px-3 py-3 bg-white border border-gray-100 rounded-2xl text-lg font-black outline-none uppercase">
+                               {(availableZones || []).map(z => <option key={z} value={z}>{z.split(' (')[0]}</option>)}
+                             </select>
+                           </div>
+                        </div>
+                        <div className="space-y-1">
+                           <label className="text-[8px] font-black text-gray-400 uppercase ml-1">EXPIRY DATE</label>
+                           <input type="date" value={batch.expiry === '2099-12-31' ? '' : batch.expiry} onChange={e => {
+                               const updated = [...(isEditingItem.batches || [])];
+                               updated[idx] = { ...batch, expiry: e.target.value || '2099-12-31' };
+                               setIsEditingItem({ ...isEditingItem, batches: updated });
+                             }} className="w-full px-4 py-3 bg-white border border-gray-100 rounded-2xl text-xl font-black outline-none" />
+                        </div>
+                      </div>
+                    ))}
+                    <button onClick={() => setIsEditingItem({ ...isEditingItem, batches: [...(isEditingItem.batches || []), { id: `BAT-${Math.random().toString(36).substr(2, 5).toUpperCase()}`, expiry: '2099-12-31', quantity: 0, zone: availableZones[0] }] })}
+                      className="w-full py-3.5 border border-dashed border-gray-200 rounded-2xl text-[10px] font-black text-gray-400 uppercase active:bg-gray-50 tracking-widest">+ MANUAL ENTRY</button>
+                 </div>
+              </div>
+
+              <div className="pt-2 space-y-4">
+                 <button onClick={handleEditItemSubmit} className="w-full py-5 bg-[#800000] text-white rounded-2xl font-black uppercase text-sm tracking-widest shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all">
+                    <Save size={18}/> SAVE REGISTRY
+                 </button>
+                 <div className="p-3 bg-gray-50 rounded-3xl border border-gray-100/50">
+                   <button 
+                    onClick={handleDeleteItem} 
+                    className="w-full py-4 bg-[#fff5f5] text-red-600 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 active:bg-red-50 transition-all border border-red-100/30 shadow-sm"
+                   >
+                      <Trash2 size={18}/> PERMANENT WIPE
+                   </button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Navigation Bar */}
+      <footer className="fixed bottom-0 left-0 right-0 bg-white border-t flex items-center justify-around h-16 pb-safe z-[100] shadow-[0_-1px_10px_rgba(0,0,0,0.05)]">
+        {[ 
+          { id: 'dashboard', icon: LayoutDashboard, label: 'Home' }, 
+          { id: 'inventory', icon: Package, label: 'Stock' }, 
+          { id: 'pending', icon: ClipboardList, label: 'Queue' }, 
           { id: 'history', icon: History, label: 'Logs' },
-          { id: 'settings', icon: Settings, label: 'Setup' }
+          { id: 'settings', icon: Settings, label: 'Admin' }
         ].map(item => (
-          <button key={item.id} onClick={() => setView(item.id as any)} className={`flex flex-col items-center gap-1.5 transition-all ${view === item.id ? 'text-[#800000]' : 'text-gray-300'}`}>
-            <item.icon size={22} className={view === item.id ? 'stroke-[2.5px]' : ''} />
-            <span className="text-[8px] font-black uppercase tracking-widest">{item.label}</span>
+          <button 
+            key={item.id} 
+            onClick={() => setView(item.id as any)} 
+            className={`flex flex-col items-center justify-center gap-0.5 w-full h-full transition-all relative ${view === item.id ? 'text-[#800000]' : 'text-gray-300'}`}
+          >
+            {item.id === 'pending' && (pendingIssues?.length || 0) > 0 && (
+              <span className="absolute top-2 right-[30%] bg-red-500 text-white text-[7px] font-black min-w-[14px] h-[14px] rounded-full flex items-center justify-center border border-white">
+                {pendingIssues?.length}
+              </span>
+            )}
+            <item.icon size={20} strokeWidth={view === item.id ? 2.5 : 2} />
+            <span className="text-[7px] font-black uppercase tracking-tighter">{item.label}</span>
+            {view === item.id && <div className="absolute bottom-1 w-1 h-1 bg-[#800000] rounded-full" />}
           </button>
         ))}
-        <button onClick={() => setIsCartOpen(true)} className={`relative flex flex-col items-center gap-1.5 transition-all ${cart.length > 0 ? 'text-[#800000]' : 'text-gray-300'}`}>
+        <button onClick={() => setIsCartOpen(true)} className={`flex flex-col items-center justify-center gap-0.5 w-full h-full relative ${(cart?.length || 0) > 0 ? 'text-[#800000]' : 'text-gray-300'}`}>
           <div className="relative">
-            <ShoppingCart size={22} />
-            {cart.length > 0 && <span className="absolute -top-2 -right-2 bg-[#800000] text-white text-[8px] font-black px-1.5 py-0.5 rounded-full border-2 border-white animate-bounce">{cart.length}</span>}
+            <ShoppingCart size={20} strokeWidth={(cart?.length || 0) > 0 ? 2.5 : 2} />
+            {(cart?.length || 0) > 0 && <span className="absolute -top-1.5 -right-1.5 bg-[#800000] text-white text-[7px] font-black w-3.5 h-3.5 rounded-full flex items-center justify-center border border-white">{cart.length}</span>}
           </div>
-          <span className="text-[8px] font-black uppercase tracking-widest">Cart</span>
+          <span className="text-[7px] font-black uppercase tracking-tighter">Cart</span>
         </button>
       </footer>
 
-      <div className="fixed bottom-24 right-4 z-[60] flex flex-col items-end gap-2 pointer-events-none">
-        <div className={`px-2 py-1 rounded-full text-[6px] font-black uppercase tracking-widest flex items-center gap-1.5 border shadow-sm backdrop-blur-md ${storageUsageMB > (STORAGE_LIMIT_MB * 0.8) ? 'bg-red-500 text-white border-red-600 animate-pulse' : 'bg-white/80 text-gray-400 border-gray-100'}`}>
-          <HardDrive size={8} /> {storageUsageMB.toFixed(1)}MB Footprint
-        </div>
-      </div>
-
-      {isTursoConfigOpen && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-lg flex flex-col animate-in zoom-in-95 duration-300 overflow-hidden">
-             <div className="p-8 border-b bg-blue-50/50 flex justify-between items-center">
-               <div className="flex items-center gap-3 text-blue-600">
-                 <Database size={24} />
+      {/* Cart Drawer */}
+      {isCartOpen && (
+        <div className="fixed inset-0 z-[2100] bg-black/40 backdrop-blur-[2px] flex justify-end">
+           <div className="bg-white w-full max-w-[340px] h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+              <div className="p-5 border-b flex justify-between items-center bg-[#800000] text-white shrink-0">
                  <div>
-                   <h3 className="text-sm font-black uppercase tracking-widest">Turso Cloud Setup</h3>
-                   <p className="text-[9px] font-bold uppercase opacity-60">Edge SQLite Integration</p>
+                    <h3 className="text-sm font-black uppercase tracking-widest">Draft({cart?.length || 0})</h3>
                  </div>
-               </div>
-               <button onClick={() => setIsTursoConfigOpen(false)} className="p-2 hover:bg-blue-100 rounded-xl transition-colors"><X size={20}/></button>
-             </div>
-             <div className="p-8 space-y-6">
-                <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex gap-4">
-                   <Cloud className="text-blue-500 shrink-0" size={24} />
-                   <p className="text-[10px] font-bold text-blue-800 leading-relaxed uppercase">The system is currently using the Sunlight Guest Hotel Coron production database. You can modify the URL or Token if you wish to use a custom instance.</p>
-                </div>
-                
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <label className={labelClass}>Database URL</label>
-                    <input 
-                      type="text" 
-                      placeholder="libsql://your-db-name.turso.io" 
-                      value={tursoUrlInput} 
-                      onChange={e => setTursoUrlInput(e.target.value)}
-                      className={modalInputClass}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className={labelClass}>Auth Token</label>
-                    <input 
-                      type="password" 
-                      placeholder="Enter your Turso JWT" 
-                      value={tursoTokenInput} 
-                      onChange={e => setTursoTokenInput(e.target.value)}
-                      className={modalInputClass}
-                    />
-                  </div>
-                  <a href="https://turso.tech" target="_blank" className="flex items-center gap-1 text-[8px] font-black text-blue-600 uppercase tracking-widest mt-2 hover:underline">
-                    Get credentials from Turso CLI/Dashboard <ExternalLink size={10} />
-                  </a>
-                </div>
-
-                {isCloudMode && (
-                  <div className="pt-4 border-t">
-                    <button onClick={handleDisconnectTurso} className="w-full py-3 border border-red-100 text-red-500 rounded-2xl text-[10px] font-black uppercase hover:bg-red-50 transition-colors">
-                      Disconnect Cloud Storage
+                 <button onClick={() => setIsCartOpen(false)} className="p-1"><X size={22}/></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar bg-gray-50/30">
+                {(cart || []).map((item, idx) => (
+                  <div key={idx} className="bg-white border border-gray-100 p-4 rounded-2xl flex justify-between items-center shadow-sm">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-black text-[12px] text-gray-800 uppercase truncate pr-4">{item.name}</p>
+                      <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">
+                        {item.zone?.split(' (')[0] || Zone.MAIN} • {item.quantity} {item.uom}
+                      </p>
+                    </div>
+                    <button onClick={() => setCart(prev => (prev || []).filter((_, i) => i !== idx))} className="text-gray-200 hover:text-red-500 transition-colors shrink-0">
+                      <Trash2 size={18} />
                     </button>
                   </div>
-                )}
-             </div>
-             <div className="p-8 bg-gray-50 border-t flex gap-4">
-                <button onClick={() => setIsTursoConfigOpen(false)} className="flex-1 py-4 text-[10px] font-black text-gray-400 uppercase">Back</button>
+                ))}
+                {cart?.length === 0 && <div className="py-20 text-center text-gray-200 uppercase font-black text-[9px] tracking-widest">Draft is empty</div>}
+              </div>
+              <div className="p-5 border-t bg-white pb-safe space-y-3">
                 <button 
-                  onClick={handleConnectTurso} 
-                  disabled={!tursoUrlInput || isSyncing}
-                  className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg shadow-blue-200 active:scale-95 transition-all flex items-center justify-center gap-2"
+                  disabled={cart?.length === 0} 
+                  onClick={() => { setCheckoutMode('release'); setIsCheckingOut(true); }} 
+                  className="w-full py-4 bg-[#800000] text-white rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-lg disabled:opacity-30 active:scale-95 transition-all flex items-center justify-center gap-2"
                 >
-                  {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                  Connect & Sync
+                  <ShieldCheck size={16} /> Final Release
                 </button>
-             </div>
-          </div>
+                <button 
+                  disabled={cart?.length === 0} 
+                  onClick={() => { setCheckoutMode('queue'); setIsCheckingOut(true); }} 
+                  className="w-full py-4 border-2 border-[#800000] text-[#800000] rounded-2xl font-black uppercase tracking-widest text-[11px] disabled:opacity-30 active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <Send size={16} /> Queue for Later
+                </button>
+              </div>
+           </div>
         </div>
       )}
 
-      {isCartOpen && (
-        <div className="fixed inset-0 z-[1000] flex justify-end bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-md h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-            <div className="p-6 border-b flex justify-between items-center bg-[#800000] text-white">
-              <div>
-                <h3 className="text-base font-black uppercase tracking-widest">Issue Request</h3>
-                <p className="text-[9px] font-bold text-white/60 uppercase">{cart.length} Items Selected</p>
+      {/* Release Selection Modal */}
+      {isCheckingOut && (
+        <div className="fixed inset-0 z-[2200] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-sm:w-[95%] max-w-sm rounded-[2rem] p-6 space-y-6 shadow-2xl">
+            <div className="text-center"><h3 className="text-xs font-black uppercase tracking-widest text-[#800000]">{checkoutMode === 'release' ? 'Release Now' : 'Queue Request'}</h3></div>
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[8px] font-black uppercase tracking-widest text-gray-300 ml-1">Destination Unit</label>
+                <select value={receiverDept} onChange={e => setReceiverDept(e.target.value)} className="w-full p-4 border rounded-xl outline-none focus:border-[#800000] font-black uppercase text-[11px] bg-gray-50 border-gray-100">
+                  {(availableDepartments || []).map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
               </div>
-              <button onClick={() => setIsCartOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X size={24}/></button>
             </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
-              {cart.map((item, idx) => (
-                <div key={`${item.itemId}-${item.zone}`} className="bg-gray-50 border p-4 rounded-2xl flex justify-between items-center">
-                  <div>
-                    <p className="text-[9px] font-black text-gray-400 uppercase tabular-nums">{item.sku}</p>
-                    <p className="font-black text-sm text-gray-800">{item.name}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                       <span className="bg-[#800000]/5 text-[#800000] text-[8px] font-black px-1.5 py-0.5 rounded uppercase">{item.zone.split(' ')[0]}</span>
-                       <span className="text-[9px] font-bold text-gray-400">Qty: {item.quantity} {item.uom}</span>
-                    </div>
-                  </div>
-                  <button onClick={() => removeFromCart(item.itemId, item.zone)} className="p-2 text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
-                </div>
-              ))}
-              {cart.length === 0 && (
-                <div className="h-full flex flex-col items-center justify-center text-gray-300 space-y-4 opacity-50">
-                  <ShoppingCart size={48} />
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em]">Cart is Empty</p>
-                </div>
-              )}
-            </div>
-
-            <div className="p-6 border-t space-y-4">
-              <button 
-                disabled={cart.length === 0}
-                onClick={() => setIsCheckingOut(true)}
-                className="w-full py-4 bg-[#800000] text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl disabled:opacity-30 disabled:grayscale transition-all active:scale-95"
-              >
-                Sign Off & Release
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setIsCheckingOut(false)} className="py-3.5 border text-gray-400 font-black uppercase text-[9px] rounded-xl border-gray-100">Cancel</button>
+              <button onClick={handleQueueRequest} className="py-3.5 bg-[#800000] text-white font-black uppercase text-[9px] rounded-xl shadow-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all">
+                <CheckCircle2 size={12}/> Confirm
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {isTransferringStock && (
-        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95">
-             <div className="p-8 border-b flex justify-between items-center bg-amber-50/50">
-               <div>
-                 <h3 className="text-sm font-black uppercase tracking-widest text-amber-600">Stock Transfer</h3>
-                 <p className="text-[9px] font-bold text-gray-400 uppercase">Movement Between Zones</p>
+      {/* Receive Stock Modal */}
+      {isAddingItem && (
+        <div className="fixed inset-0 z-[2000] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl p-6 space-y-5 animate-in zoom-in-95 my-auto relative">
+             <div className="flex justify-between items-center border-b pb-3">
+               <div className="flex items-center gap-2">
+                 <div className="p-1.5 bg-green-50 text-green-600 rounded-lg"><PlusCircle size={16}/></div>
+                 <h3 className="text-xs font-black uppercase tracking-widest text-gray-900">Inbound Stock</h3>
                </div>
-               <button onClick={() => setIsTransferringStock(false)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors"><X size={20}/></button>
-             </div>
-             <div className="flex-1 overflow-y-auto p-8 space-y-6 no-scrollbar">
-                <div className="space-y-1.5">
-                  <label className={labelClass}>Select Item</label>
-                  <select 
-                    value={transferData.itemId} 
-                    onChange={e => {
-                      const item = inventory.find(i=>i.id===e.target.value);
-                      setTransferData({
-                        ...transferData, 
-                        itemId: e.target.value,
-                        fromZone: item ? Object.keys(item.stock).find(z => item.stock[z] > 0) || availableZones[0] : availableZones[0]
-                      });
-                    }} 
-                    className={modalInputClass}
-                  >
-                    <option value="">Select an Item...</option>
-                    {inventory.map(i => <option key={i.id} value={i.id}>{i.name} ({i.sku})</option>)}
-                  </select>
-                </div>
-                {transferData.itemId && (
-                  <>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className={labelClass}>From Zone</label>
-                        <select 
-                          value={transferData.fromZone} 
-                          onChange={e => setTransferData({...transferData, fromZone: e.target.value})} 
-                          className={modalInputClass} 
-                        >
-                          {availableZones.map(z => <option key={z} value={z}>{z}</option>)}
-                        </select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className={labelClass}>To Zone</label>
-                        <select 
-                          value={transferData.toZone} 
-                          onChange={e => setTransferData({...transferData, toZone: e.target.value})} 
-                          className={modalInputClass} 
-                        >
-                          {availableZones.map(z => <option key={z} value={z}>{z}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className={labelClass}>Transfer Quantity</label>
-                      <input 
-                        type="number" 
-                        value={transferData.qty} 
-                        onChange={e => setTransferData({...transferData, qty: parseFloat(e.target.value) || 0})} 
-                        className={modalInputClass} 
-                      />
-                    </div>
-                  </>
-                )}
-             </div>
-             <div className="p-8 border-t flex gap-4">
-                <button onClick={() => setIsTransferringStock(false)} className="flex-1 py-4 text-[10px] font-black uppercase text-gray-400">Cancel</button>
-                <button onClick={handleTransferStock} className="flex-1 py-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg active:scale-95 transition-all">Move Stock</button>
-             </div>
-          </div>
-        </div>
-      )}
-
-      {/* High Fidelity Edit Item Modal (Screenshot Match) */}
-      {isEditingInventoryItem && itemToEdit && (
-        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 overflow-hidden">
-             {/* Header */}
-             <div className="px-8 pt-8 pb-4 flex justify-between items-start">
-               <div className="space-y-1">
-                 <h3 className="text-xl font-black uppercase tracking-tight text-[#800000]">EDIT ITEM</h3>
-                 <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">{itemToEdit.sku}</p>
-               </div>
-               <div className="flex gap-2 items-center">
-                 <button 
-                   onClick={() => handleDeleteInventoryItem()}
-                   className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all active:scale-90"
-                   title="Delete Item"
-                 >
-                   <Trash2 size={26} strokeWidth={2.5} />
-                 </button>
-                 <button 
-                  onClick={() => setIsEditingInventoryItem(false)} 
-                  className="p-3 text-gray-300 hover:bg-gray-100 rounded-full transition-all"
-                 >
-                   <X size={30} strokeWidth={2.5} />
-                 </button>
-               </div>
+               <button onClick={() => { setIsAddingItem(false); setShowSuggestions(false); }} className="text-gray-300"><X size={20}/></button>
              </div>
              
-             {/* Body */}
-             <div className="flex-1 overflow-y-auto px-8 pb-10 space-y-7 no-scrollbar">
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">NAME</label>
-                  <input 
-                    type="text" 
-                    value={itemToEdit.name} 
-                    onChange={e => setItemToEdit({...itemToEdit, name: e.target.value})} 
-                    className="w-full p-5 border-none rounded-[1.8rem] text-base font-bold bg-gray-50/80 focus:bg-white focus:ring-4 focus:ring-[#800000]/5 outline-none transition-all shadow-inner"
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">CATEGORY</label>
-                    <div className="relative">
-                      <select 
-                        value={itemToEdit.category} 
-                        onChange={e => setItemToEdit({...itemToEdit, category: e.target.value})} 
-                        className="w-full p-5 border-none rounded-[1.8rem] text-base font-bold bg-gray-50/80 focus:bg-white focus:ring-4 focus:ring-[#800000]/5 outline-none transition-all shadow-inner appearance-none pr-10"
-                      >
-                        {availableCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                      <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">UOM</label>
+             <div className="space-y-3.5">
+               <div className="space-y-1 relative">
+                  <label className="text-[8px] font-black uppercase text-gray-300 ml-1 flex items-center gap-1">
+                    <Search size={8} /> Item Search / Name
+                  </label>
+                  <div className="relative">
                     <input 
                       type="text" 
-                      value={itemToEdit.uom} 
-                      onChange={e => setItemToEdit({...itemToEdit, uom: e.target.value})} 
-                      className="w-full p-5 border-none rounded-[1.8rem] text-base font-bold bg-gray-50/80 focus:bg-white focus:ring-4 focus:ring-[#800000]/5 outline-none transition-all shadow-inner"
+                      placeholder="Enter name..." 
+                      value={newItemData.name} 
+                      onFocus={() => { if(itemSuggestions.length > 0) setShowSuggestions(true); }}
+                      onBlur={() => { setTimeout(() => setShowSuggestions(false), 200); }}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setNewItemData({...newItemData, name: val});
+                        if (val.length > 1) {
+                          const matches = inventory.filter(i => 
+                            (i.name || '').toLowerCase().includes(val.toLowerCase()) || 
+                            (i.sku || '').toLowerCase().includes(val.toLowerCase())
+                          ).slice(0, 5);
+                          setItemSuggestions(matches);
+                          setShowSuggestions(matches.length > 0);
+                        } else {
+                          setItemSuggestions([]);
+                          setShowSuggestions(false);
+                        }
+                      }} 
+                      className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl font-bold outline-none focus:border-[#800000] text-sm shadow-sm pr-12" 
                     />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">UNIT COST (₱)</label>
-                    <input 
-                      type="number" 
-                      value={itemToEdit.unitCost} 
-                      onChange={e => setItemToEdit({...itemToEdit, unitCost: parseFloat(e.target.value) || 0})} 
-                      className="w-full p-5 border-none rounded-[1.8rem] text-base font-bold bg-gray-50/80 focus:bg-white focus:ring-4 focus:ring-[#800000]/5 outline-none transition-all shadow-inner"
-                    />
-                  </div>
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">PAR STOCK</label>
-                    <input 
-                      type="number" 
-                      value={itemToEdit.parStock} 
-                      onChange={e => setItemToEdit({...itemToEdit, parStock: parseFloat(e.target.value) || 0})} 
-                      className="w-full p-5 border-none rounded-[1.8rem] text-base font-bold bg-gray-50/80 focus:bg-white focus:ring-4 focus:ring-[#800000]/5 outline-none transition-all shadow-inner"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-4 pt-2">
-                  <div className="flex items-center justify-between p-5 bg-gray-50/80 rounded-[1.8rem] shadow-inner">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-white rounded-xl text-[#800000]"><Calendar size={18} /></div>
-                      <div>
-                        <span className="text-[10px] font-black uppercase tracking-widest block">Expiration Track</span>
-                        <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Enable FEFO monitoring</span>
-                      </div>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none">
+                      <Search size={18} />
                     </div>
-                    <button 
-                      onClick={() => {
-                        const isPerp = itemToEdit.earliestExpiry === '2099-12-31';
-                        const newExpiry = isPerp ? new Date().toISOString().split('T')[0] : '2099-12-31';
-                        // Propagate change to batches to ensure syncAggregates doesn't overwrite it
-                        const newBatches = itemToEdit.batches.map(b => ({ ...b, expiry: newExpiry }));
-                        setItemToEdit({
-                          ...itemToEdit,
-                          earliestExpiry: newExpiry,
-                          batches: newBatches
-                        });
-                      }}
-                      className={`w-14 h-7 rounded-full transition-all relative ${itemToEdit.earliestExpiry !== '2099-12-31' ? 'bg-[#800000]' : 'bg-gray-300'}`}
-                    >
-                      <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${itemToEdit.earliestExpiry !== '2099-12-31' ? 'left-8' : 'left-1'}`} />
-                    </button>
                   </div>
-
-                  {itemToEdit.earliestExpiry !== '2099-12-31' && (
-                    <div className="space-y-3 animate-in slide-in-from-top-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">EARLIEST EXPIRY</label>
-                      <input 
-                        type="date" 
-                        value={itemToEdit.earliestExpiry} 
-                        onChange={e => {
-                          const val = e.target.value;
-                          const newBatches = itemToEdit.batches.map(b => ({ ...b, expiry: val }));
-                          setItemToEdit({...itemToEdit, earliestExpiry: val, batches: newBatches});
-                        }} 
-                        className="w-full p-5 border-none rounded-[1.8rem] text-base font-bold bg-gray-50/80 focus:bg-white focus:ring-4 focus:ring-[#800000]/5 outline-none transition-all shadow-inner"
-                      />
+                  
+                  {showSuggestions && itemSuggestions.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 z-[2005] bg-white border border-gray-100 rounded-2xl shadow-2xl mt-2 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                      {itemSuggestions.map(item => (
+                        <button
+                          key={item.id}
+                          onMouseDown={() => {
+                            setNewItemData(prev => ({ 
+                              ...prev, 
+                              name: item.name, 
+                              uom: item.uom, 
+                              category: item.category, 
+                              sku: item.sku, 
+                              unitCost: item.unitCost, 
+                              parStock: item.parStock 
+                            }));
+                            setItemSuggestions([]);
+                            setShowSuggestions(false);
+                          }}
+                          className="w-full px-4 py-4 flex flex-col items-start hover:bg-gray-50 transition-colors border-b last:border-0 border-gray-50 text-left group"
+                        >
+                          <span className="text-[11px] font-black text-gray-800 uppercase leading-none mb-1.5 group-hover:text-[#800000] transition-colors">{item.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest bg-gray-100 px-1.5 py-0.5 rounded">SKU: {item.sku}</span>
+                            <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">{item.uom}</span>
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   )}
-                </div>
+               </div>
+               
+               <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black uppercase text-gray-300 ml-1">Quantity</label>
+                    <input type="number" value={newItemData.receivedQty || ''} onChange={e => setNewItemData({...newItemData, receivedQty: Number(e.target.value)})} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl font-black text-sm outline-none focus:border-[#800000]" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black uppercase text-gray-300 ml-1">UOM</label>
+                    <input type="text" placeholder="Units" value={newItemData.uom} onChange={e => setNewItemData({...newItemData, uom: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl font-black text-sm outline-none focus:border-[#800000]" />
+                  </div>
+               </div>
+
+               <div className="space-y-1">
+                  <label className="text-[8px] font-black uppercase text-gray-300 ml-1">Expiration</label>
+                  <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                    <input type="date" disabled={newItemData.notExpiring} value={newItemData.expiryDate} onChange={e => setNewItemData({...newItemData, expiryDate: e.target.value})} className="flex-1 bg-transparent font-black outline-none text-[12px] disabled:opacity-20 uppercase" />
+                    <label className="flex items-center gap-2 select-none shrink-0 cursor-pointer">
+                      <input type="checkbox" checked={newItemData.notExpiring} onChange={e => setNewItemData({...newItemData, notExpiring: e.target.checked})} className="w-5 h-5 rounded text-[#800000] accent-[#800000]" />
+                      <span className="text-[9px] font-black uppercase text-gray-400">None</span>
+                    </label>
+                  </div>
+               </div>
              </div>
              
-             {/* Footer */}
-             <div className="px-8 py-7 flex justify-between items-center bg-white border-t border-gray-50">
-                <button 
-                  onClick={() => setIsEditingInventoryItem(false)} 
-                  className="px-4 py-2 text-[12px] font-black uppercase text-gray-400 hover:text-gray-700 transition-colors tracking-widest"
-                >
-                  CANCEL
-                </button>
-                <button 
-                  onClick={handleSaveEditItem} 
-                  className="bg-[#800000] text-white px-10 py-5 rounded-[1.8rem] font-black uppercase text-[12px] tracking-[0.2em] shadow-[0_15px_30px_-5px_rgba(128,0,0,0.4)] hover:translate-y-[-2px] active:translate-y-0 active:shadow-lg transition-all"
-                >
-                  SAVE CHANGES
-                </button>
-             </div>
+             <button onClick={handleAddItemSubmit} className="w-full py-5 bg-[#800000] text-white rounded-xl font-black uppercase text-[11px] tracking-widest active:scale-[0.98] transition-all shadow-lg mt-3">Finalize Admission</button>
           </div>
         </div>
       )}
 
-      {isCheckingOut && (
-        <div className="fixed inset-0 z-[1100] bg-black/80 flex items-center justify-center p-4 backdrop-blur-md">
-          <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95">
-            <div className="p-8 border-b flex justify-between items-center">
-              <div>
-                <h3 className="text-sm font-black uppercase tracking-widest text-[#800000]">Verification</h3>
-                <p className="text-[9px] font-bold text-gray-400 uppercase">Acknowledgement Required</p>
-              </div>
-              <button onClick={() => setIsCheckingOut(false)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors"><X size={20}/></button>
+      {/* Signature & Finalize Modal */}
+      {isFinalizingIssue && (
+        <div className="fixed inset-0 z-[2200] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+            <div className="p-6 border-b flex justify-between items-center bg-gray-50">
+              <div><h3 className="text-xs font-black uppercase tracking-widest text-[#800000]">Authentication</h3><p className="text-[8px] font-bold text-gray-400 uppercase mt-0.5">{activeRequestToFinalize?.department}</p></div>
+              <button onClick={() => setIsFinalizingIssue(false)} className="text-gray-400"><X size={18}/></button>
             </div>
-            
-            <div className="flex-1 overflow-y-auto p-8 space-y-8 no-scrollbar">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-1.5">
-                  <label className={labelClass}>Receiver Name</label>
-                  <input type="text" placeholder="Full Name" value={receiverName} onChange={e => setReceiverName(e.target.value)} className={modalInputClass} />
-                </div>
-                <div className="space-y-1.5">
-                  <label className={labelClass}>Department</label>
-                  <select value={receiverDept} onChange={e => setReceiverDept(e.target.value)} className={modalInputClass}>
-                    {availableDepartments.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
+              <div className="space-y-1.5">
+                <label className="text-[8px] font-black uppercase tracking-widest text-gray-300 ml-1">Personnel Name</label>
+                <input type="text" placeholder="Print Name Clearly" value={receiverName} onChange={e => setReceiverName(e.target.value)} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-[#800000] font-black uppercase text-sm shadow-inner" />
               </div>
-              
               <SignaturePad onSave={setSignature} onClear={() => setSignature(null)} />
             </div>
-
-            <div className="p-8 border-t bg-gray-50 flex gap-4">
-              <button onClick={() => setIsCheckingOut(false)} className="flex-1 py-4 border border-gray-200 text-gray-400 font-black uppercase text-[10px] rounded-2xl">Back</button>
-              <button 
-                disabled={!signature || !receiverName}
-                onClick={handleFinalIssue}
-                className="flex-1 py-4 bg-[#800000] text-white font-black uppercase text-[10px] rounded-2xl shadow-lg disabled:opacity-30 active:scale-95 transition-all"
-              >
-                Confirm Release
+            <div className="p-6 border-t bg-gray-50 flex gap-3">
+              <button onClick={() => setIsFinalizingIssue(false)} className="flex-1 py-4 border text-gray-400 font-black uppercase text-[9px] rounded-xl border-gray-100">Cancel</button>
+              <button disabled={!signature || !receiverName} onClick={handleFinalRelease} className="flex-1 py-4 bg-[#800000] text-white font-black uppercase text-[9px] rounded-xl shadow-lg flex items-center justify-center gap-2 active:scale-95 disabled:opacity-20 transition-all">
+                <Save size={14}/> Release
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {isUserSelectorOpen && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-          <div className="bg-white rounded-[3rem] p-10 w-full max-sm text-center space-y-8 shadow-2xl animate-in zoom-in-95">
-            <div className="space-y-2">
-              <h3 className="text-sm font-black uppercase tracking-widest text-[#800000]">Switch User</h3>
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Select your identity</p>
+      {/* Invisible Receipt for Export */}
+      {receiptToExport && (
+        <div id={`receipt-${receiptToExport.id}`} style={{ display: 'none', padding: '40px', background: 'white', width: '600px', fontFamily: 'Montserrat' }}>
+          <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+            <h1 style={{ color: '#800000', margin: '0', fontSize: '32px' }}>SUNLIGHT</h1>
+            <p style={{ margin: '0', fontSize: '10px', letterSpacing: '4px', color: '#666' }}>WAREHOUSE RELEASE</p>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '30px' }}>
+            <div>
+              <p style={{ margin: '0', fontSize: '10px', fontWeight: 'bold' }}>RELEASED TO:</p>
+              <p style={{ margin: '0', fontSize: '14px' }}>{receiptToExport.receiverName}</p>
+              <p style={{ margin: '0', fontSize: '12px', color: '#666' }}>{receiptToExport.department}</p>
             </div>
-            <div className="space-y-3">
-              {users.map(u => (
-                <button 
-                  key={u.id} 
-                  onClick={() => selectUserRequest(u)}
-                  className={`w-full p-5 rounded-3xl flex items-center justify-between border shadow-sm active:scale-95 transition-all ${currentUser?.id === u.id ? 'border-[#800000] bg-[#800000]/5' : 'border-gray-100 bg-gray-50'}`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="p-2 bg-white rounded-full"><Users size={16} className="text-gray-400"/></div>
-                    <div className="text-left">
-                      <p className="text-sm font-black text-gray-900">{u.name}</p>
-                      <p className="text-[9px] font-black uppercase text-gray-400">{u.role}</p>
-                    </div>
-                  </div>
-                  {currentUser?.id === u.id && <Check size={16} className="text-[#800000]" />}
-                </button>
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ margin: '0', fontSize: '10px', fontWeight: 'bold' }}>ID:</p>
+              <p style={{ margin: '0', fontSize: '12px' }}>{receiptToExport.id}</p>
+              <p style={{ margin: '0', fontSize: '10px' }}>{new Date(receiptToExport.timestamp).toLocaleString()}</p>
+            </div>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '40px' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #eee' }}>
+                <th style={{ textAlign: 'left', padding: '10px 0', fontSize: '10px' }}>ITEM</th>
+                <th style={{ textAlign: 'right', padding: '10px 0', fontSize: '10px' }}>QTY</th>
+              </tr>
+            </thead>
+            <tbody>
+              {receiptToExport.items.map((it, idx) => (
+                <tr key={idx} style={{ borderBottom: '1px solid #f9f9f9' }}>
+                  <td style={{ padding: '10px 0', fontSize: '12px' }}>{it.name}</td>
+                  <td style={{ padding: '10px 0', textAlign: 'right', fontSize: '12px', fontWeight: 'bold' }}>{it.quantity} {it.uom}</td>
+                </tr>
               ))}
-            </div>
-            <button onClick={() => setIsUserSelectorOpen(false)} className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Dismiss</button>
-          </div>
-        </div>
-      )}
-
-      {isPasswordPromptOpen && (
-        <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className={`bg-white rounded-[2.5rem] p-10 w-full max-sm text-center space-y-8 border-4 border-[#800000]/10 ${passwordError ? 'animate-shake' : 'animate-in zoom-in-95'}`}>
-            <div className="w-16 h-16 bg-[#800000]/5 text-[#800000] rounded-full flex items-center justify-center mx-auto"><ShieldCheck size={32} /></div>
-            <div className="space-y-2"><h3 className="text-sm font-black uppercase tracking-widest">Verification</h3><p className="text-[9px] font-bold text-gray-400 uppercase">Enter Authorization Key</p></div>
-            <input autoFocus type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleVerifyPassword()} className="w-full text-center text-4xl font-black tracking-[0.5em] outline-none border-b-4 border-[#800000] pb-2" />
-            <div className="flex gap-4"><button onClick={() => { setIsPasswordPromptOpen(false); setPendingUser(null); }} className="flex-1 py-4 text-[10px] font-black text-gray-400 uppercase">Cancel</button><button onClick={handleVerifyPassword} className="flex-1 py-4 bg-[#800000] text-white rounded-2xl font-black uppercase text-[10px] shadow-lg">Verify</button></div>
-          </div>
-        </div>
-      )}
-
-      {isPasswordChangeOpen && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-          <div className="bg-white rounded-[2.5rem] p-10 w-full max-sm text-center space-y-6 shadow-2xl animate-in zoom-in-95">
-            <div className="w-16 h-16 bg-[#800000]/5 text-[#800000] rounded-full flex items-center justify-center mx-auto"><Key size={32} /></div>
-            <div className="space-y-2">
-              <h3 className="text-sm font-black uppercase tracking-widest text-[#800000]">Security Protocol</h3>
-              <p className="text-[9px] font-bold text-gray-400 uppercase">Change Admin Authorization Key</p>
-            </div>
-            <input 
-              type="password" 
-              placeholder="Enter New Numeric Key" 
-              value={newPassword} 
-              onChange={e => setNewPassword(e.target.value)}
-              className="w-full text-center text-3xl font-black tracking-widest outline-none border-b-2 border-[#800000] py-4" 
-            />
-            <div className="flex gap-4">
-               <button onClick={() => setIsPasswordChangeOpen(false)} className="flex-1 py-4 text-[10px] font-black text-gray-400 uppercase">Cancel</button>
-               <button onClick={handlePasswordUpdate} className="flex-1 py-4 bg-[#800000] text-white rounded-2xl font-black uppercase text-[10px] shadow-lg active:scale-95 transition-all">Update Key</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isManageModalOpen && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-300">
-            <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
-              <div>
-                <h3 className="text-sm font-black uppercase tracking-widest text-[#800000]">Manage {manageTarget}</h3>
-                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">System Configuration Panel</p>
-              </div>
-              <button onClick={() => setIsManageModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors"><X size={20}/></button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-8 space-y-8 no-scrollbar">
-              <div className="space-y-4">
-                <label className={labelClass}>Add New Entry</label>
-                <div className="flex gap-3">
-                  <input type="text" placeholder={`Enter ${manageTarget?.slice(0,-1)} name...`} value={manageInput} onChange={e => setManageInput(e.target.value)} className={modalInputClass} />
-                  {manageTarget === 'users' && (
-                    <select value={manageRole} onChange={e => setManageRole(e.target.value as any)} className="px-4 border border-gray-100 rounded-xl text-[10px] font-black uppercase bg-gray-50 outline-none">
-                      <option value="Staff">Staff</option>
-                      <option value="Manager">Manager</option>
-                    </select>
-                  )}
-                  <button onClick={handleManageSubmit} className="p-4 bg-[#800000] text-white rounded-xl shadow-lg active:scale-95 transition-all"><Plus size={20} /></button>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <label className={labelClass}>Active {manageTarget}</label>
-                <div className="grid grid-cols-1 gap-3">
-                  {(manageTarget === 'users' ? users : 
-                    manageTarget === 'categories' ? availableCategories :
-                    manageTarget === 'zones' ? availableZones :
-                    availableDepartments).map((item, idx) => {
-                      let name = typeof item === 'string' ? item : item.name;
-                      let role = typeof item === 'string' ? null : item.role;
-                      return (
-                        <div key={idx} className="bg-gray-50/50 border border-gray-100 p-4 rounded-2xl flex items-center justify-between group">
-                          <div className="flex items-center gap-4">
-                             <div className="p-2 bg-white rounded-xl shadow-sm text-gray-400">
-                               {manageTarget === 'users' ? <Users size={16}/> : 
-                                manageTarget === 'categories' ? <Tag size={16}/> :
-                                manageTarget === 'zones' ? <Building size={16}/> : <Briefcase size={16}/>}
-                             </div>
-                             <div>
-                               <p className="text-xs font-black text-gray-900">{name}</p>
-                               {role && <p className="text-[8px] font-black uppercase text-[#800000] tracking-widest">{role}</p>}
-                             </div>
-                          </div>
-                          <button onClick={() => handleManageDelete(item)} className="p-2 text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-            </div>
-
-            <div className="p-8 border-t bg-gray-50 flex justify-end">
-              <button onClick={() => setIsManageModalOpen(false)} className="px-10 py-4 bg-white border border-gray-200 text-gray-400 rounded-2xl font-black uppercase text-[10px]">Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isAddingItem && (
-        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 overflow-hidden">
-             <div className="p-8 border-b flex justify-between items-center bg-gray-50/50">
-               <div>
-                 <h3 className="text-sm font-black uppercase tracking-widest text-[#800000]">Receive Inventory</h3>
-                 <p className="text-[9px] font-bold text-gray-400 uppercase">Logging Batch: {currentAutoBatchId}</p>
-               </div>
-               <button onClick={() => setIsAddingItem(false)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors"><X size={20}/></button>
-             </div>
-             <div className="flex-1 overflow-y-auto p-8 space-y-6 no-scrollbar pb-12">
-                <div className="space-y-1.5 relative">
-                  <label className={labelClass}>Item Description</label>
-                  <input 
-                    type="text" 
-                    placeholder="Search or Enter New Name" 
-                    value={newItemData.name} 
-                    onChange={e => {
-                      setNewItemData({...newItemData, name: e.target.value});
-                      setShowReceiveSuggestions(true);
-                    }} 
-                    onFocus={() => setShowReceiveSuggestions(true)}
-                    className={modalInputClass} 
-                  />
-                  {showReceiveSuggestions && receiveSuggestions.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 z-[1001] mt-1 bg-white border border-gray-100 rounded-2xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2">
-                       {receiveSuggestions.map(item => (
-                         <button 
-                           key={item.id} 
-                           onClick={() => {
-                             setNewItemData({
-                               ...newItemData, 
-                               name: item.name, 
-                               category: item.category, 
-                               uom: item.uom,
-                               unitCost: item.unitCost,
-                               parStock: item.parStock
-                             });
-                             setShowReceiveSuggestions(false);
-                           }}
-                           className="w-full text-left p-4 hover:bg-[#800000]/5 flex items-center justify-between group transition-colors border-b last:border-0 border-gray-50"
-                         >
-                            <div>
-                               <p className="text-xs font-black text-gray-800">{item.name}</p>
-                               <p className="text-[8px] font-bold text-gray-400 uppercase">{item.sku} • {item.category}</p>
-                            </div>
-                            <Plus size={14} className="text-gray-300 group-hover:text-[#800000] transition-colors" />
-                         </button>
-                       ))}
-                    </div>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className={labelClass}>Category</label>
-                    <select value={newItemData.category} onChange={e => setNewItemData({...newItemData, category: e.target.value})} className={modalInputClass}>
-                      {availableCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className={labelClass}>UOM (Unit)</label>
-                    <input type="text" placeholder="e.g. Sack, Case" value={newItemData.uom} onChange={e => setNewItemData({...newItemData, uom: e.target.value})} className={modalInputClass} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className={labelClass}>Receive Qty</label>
-                    <input type="number" value={newItemData.receivedQty} onChange={e => setNewItemData({...newItemData, receivedQty: parseFloat(e.target.value) || 0})} className={modalInputClass} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className={labelClass}>Storage Zone</label>
-                    <select value={newItemData.restockZone} onChange={e => setNewItemData({...newItemData, restockZone: e.target.value})} className={modalInputClass}>
-                      {availableZones.map(z => <option key={z} value={z}>{z.split(' (')[0]}</option>)}
-                    </select>
-                  </div>
-                </div>
-                
-                <div className="space-y-4 pt-2">
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-white rounded-xl text-[#800000]"><Calendar size={18} /></div>
-                      <div>
-                        <span className="text-[10px] font-black uppercase tracking-widest block">Expiration Track</span>
-                        <span className="text-[8px] font-bold text-gray-400 uppercase">Does this item expire?</span>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => setItemHasExpiry(!itemHasExpiry)}
-                      className={`w-12 h-6 rounded-full transition-all relative ${itemHasExpiry ? 'bg-[#800000]' : 'bg-gray-300'}`}
-                    >
-                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${itemHasExpiry ? 'left-7' : 'left-1'}`} />
-                    </button>
-                  </div>
-
-                  {itemHasExpiry && (
-                    <div className="space-y-1.5 animate-in slide-in-from-top-2">
-                      <label className={labelClass}>Batch Expiry (FEFO)</label>
-                      <input type="date" value={newItemData.earliestExpiry} onChange={e => setNewItemData({...newItemData, earliestExpiry: e.target.value})} className={modalInputClass} />
-                    </div>
-                  )}
-
-                  {!itemHasExpiry && (
-                    <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-2xl flex items-center gap-3 animate-in slide-in-from-top-2">
-                      <CalendarOff size={16} className="text-blue-500" />
-                      <p className="text-[9px] font-black uppercase text-blue-600">Items without expiry are issued after all expiring batches are cleared.</p>
-                    </div>
-                  )}
-                </div>
-             </div>
-             <div className="p-8 border-t flex gap-4 bg-white">
-                <button onClick={() => setIsAddingItem(false)} className="flex-1 py-4 text-[10px] font-black uppercase text-gray-400">Cancel</button>
-                <button onClick={handleCommitStockEntry} className="flex-1 py-4 bg-[#800000] text-white rounded-2xl font-black uppercase text-[10px] shadow-lg active:scale-95 transition-all">Receive Batch</button>
-             </div>
+            </tbody>
+          </table>
+          <div style={{ marginTop: '60px', textAlign: 'center' }}>
+            {receiptToExport.signature && <img src={receiptToExport.signature} alt="sig" style={{ maxHeight: '80px', borderBottom: '1px solid #000' }} />}
+            <p style={{ fontSize: '10px', marginTop: '10px' }}>AUTHORIZATION SIGNATURE</p>
           </div>
         </div>
       )}
