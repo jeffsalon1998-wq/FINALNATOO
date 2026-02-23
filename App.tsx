@@ -1,22 +1,26 @@
+
 import { 
-  InventoryItem, Transaction, User, CartItem, StockBatch, Zone, PendingIssue, UserRole
+  InventoryItem, Transaction, User, CartItem, StockBatch, Zone, PendingIssue
 } from './types';
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import html2canvas from 'html2canvas';
+import React, { useState, useEffect, useMemo } from 'react';
+import domtoimage from 'dom-to-image';
+
+import * as XLSX from 'xlsx';
 import { 
   LayoutDashboard, Package, History, ShoppingCart, 
   Search, X, CheckCircle2, Sparkles,
   Settings, TrendingDown, 
-  PlusCircle, Users, RotateCcw,
-  ArrowRight, ShieldCheck, ClipboardList, Activity, CalendarClock, Lock, Loader2, Download, Eye, Save, Send, FileOutput, Trash2, Database, Shield, Cloud, ExternalLink, RefreshCw, UploadCloud, AlertCircle
+  PlusCircle, RotateCcw,
+  ArrowRight, ShieldCheck, ClipboardList, CalendarClock, Lock, Loader2, Eye, Save, Send, FileOutput, Trash2, Database, Shield, Cloud, ExternalLink, RefreshCw, UploadCloud, AlertCircle, FileText, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { StatCard } from './components/StatCard';
 import { ItemCard } from './components/ItemCard';
 import { SignaturePad } from './components/SignaturePad';
 import { db } from './db';
 
+
 const BRAND_YELLOW = "#FFD700"; 
-const BRAND_MAROON = "#800000";
+
 const GLOBAL_ZONE_KEY = 'All Zones';
 const GLOBAL_CATEGORY_KEY = 'All Categories';
 
@@ -54,9 +58,11 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [view, setView] = useState<'dashboard' | 'inventory' | 'pending' | 'history' | 'settings'>('dashboard');
 
+
+
   // UI States
   const [isUserSelectorOpen, setIsUserSelectorOpen] = useState(true);
-  const [selectedZone, setSelectedZone] = useState<string>(GLOBAL_ZONE_KEY);
+  const [selectedZone] = useState<string>(GLOBAL_ZONE_KEY);
   const [selectedCategory, setSelectedCategory] = useState<string>(GLOBAL_CATEGORY_KEY);
   const [searchTerm, setSearchTerm] = useState('');
   const [logDeptFilter, setLogDeptFilter] = useState('All');
@@ -78,10 +84,19 @@ const App: React.FC = () => {
   const [pendingUser, setPendingUser] = useState<User | null>(null);
   const [reportModal, setReportModal] = useState<{ open: boolean, title: string, items: InventoryItem[] }>({ open: false, title: '', items: [] });
   const [isCloudSetupOpen, setIsCloudSetupOpen] = useState(false);
+  const [isRequestPickerOpen, setIsRequestPickerOpen] = useState(false);
+  const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
+  const [externalRequests, setExternalRequests] = useState<PendingIssue[]>([]);
   
   // Turso Config State
-  const [tursoUrl, setTursoUrl] = useState(localStorage.getItem('TURSO_URL') || "libsql://database-red-tree-vercel-icfg-tf7wnf43zngjwvbur4t9rp6n.aws-us-east-1.turso.io");
-  const [tursoToken, setTursoToken] = useState(localStorage.getItem('TURSO_TOKEN') || "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzA4ODM2NDEsImlkIjoiZGUyZjlkZTgtOTEzYS00YzE1LThlMzMtMzhlYTMzMGFkNzI5IiwicmlkIjoiYzNhZDBiYmMtNTI0My00NTQzLThhOTgtYmI4MjI2ZDc2MjUzIn0.8gOpqGrKkuO5LTP8PvBWZJjMskckorIyyPedTVeIZHSXqCtebkp2AQvl-2VPRZchEtizL8MJxQTZR2Da4tj4CQ");
+  const [tursoUrl, setTursoUrl] = useState(localStorage.getItem('TURSO_URL') || process.env.VITE_TURSO_URL);
+  const [tursoToken, setTursoToken] = useState(localStorage.getItem('TURSO_TOKEN') || process.env.VITE_TURSO_TOKEN);
+
+  const [activeExternalRequestId, setActiveExternalRequestId] = useState<string | null>(null);
+  
+  // Audit Mode
+  const [isAuditMode, setIsAuditMode] = useState(false);
+  const [auditCounts, setAuditCounts] = useState<Record<string, number>>({});
 
   // Transaction Finalization
   const [receiverName, setReceiverName] = useState('');
@@ -119,26 +134,28 @@ const App: React.FC = () => {
         throw new Error("Failed to initialize database connection.");
       }
 
-      const [inv, txs, pi, cfg] = await Promise.all([
+      const [inv, txs, pi, extReqs, cfg] = await Promise.all([
         db.getInventory(), 
         db.getTransactions(), 
         db.getPendingIssues(), 
+        db.getExternalRequests(),
         db.getConfig(), 
       ]);
       
       setInventory((inv as InventoryItem[]).map(item => ({ ...item, initialParStock: item.initialParStock || item.parStock })));
       setTransactions(txs as Transaction[]);
       setPendingIssues(pi as PendingIssue[]);
+      setExternalRequests(extReqs as PendingIssue[]);
       setAvailableCategories(cfg?.categories || []);
       setAvailableDepartments(cfg?.departments || []);
       setAvailableZones(cfg?.zones || []);
       
       setDbStatus({ connected: true });
       if (!silent && appInit) notify("Cloud Data Synced");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to sync data:", err);
-      setDbStatus({ connected: false, error: err.message });
-      notifyError(`Sync Error: ${err.message || 'Database connection failed'}`);
+      setDbStatus({ connected: false, error: (err as Error).message });
+      notifyError(`Sync Error: ${(err as Error).message || 'Database connection failed'}`);
     } finally {
       setIsLoadingData(false);
       setIsSyncing(false);
@@ -146,7 +163,19 @@ const App: React.FC = () => {
     }
   };
 
-  useEffect(() => { loadAppData(); }, []);
+  useEffect(() => {
+    loadAppData();
+
+    const syncInterval = setInterval(() => {
+      loadAppData(true); // Silent sync
+    }, 30000); // Every 30 seconds
+
+    return () => clearInterval(syncInterval);
+  }, []);
+
+  // --- End Scanner Implementation ---
+
+  // --- End Scanner Implementation ---
 
   const handleForcePushSync = async () => {
     if (isGuest) return;
@@ -156,21 +185,21 @@ const App: React.FC = () => {
     try {
       await db.pushState(inventory, transactions, pendingIssues);
       notify("State Pushed to Database");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Push failed", err);
-      notifyError(`Push Failed: ${err.message || 'Check database connection'}`);
+      notifyError(`Push Failed: ${(err as Error).message || 'Check database connection'}`);
     } finally {
       setIsSyncing(false);
     }
   };
 
   const syncAggregates = (item: InventoryItem): InventoryItem => {
-    let stock: Record<string, number> = {};
+    const stock: Record<string, number> = {};
     (availableZones || []).forEach(z => stock[z] = 0);
     let earliest = '2099-12-31';
     (item.batches || []).forEach(b => {
       if (b.quantity > 0) {
-        let zone = b.zone || availableZones[0];
+        const zone = b.zone || availableZones[0];
         if (!stock[zone]) stock[zone] = 0;
         stock[zone] += b.quantity;
         if (b.expiry && b.expiry < earliest) earliest = b.expiry;
@@ -181,7 +210,7 @@ const App: React.FC = () => {
 
   const handleQueueRequest = async () => {
     if (!receiverDept || isGuest) return;
-    let newTxId = `REQ-${Math.random().toString(36).substr(2, 7).toUpperCase()}`;
+    const newTxId = activeExternalRequestId || `REQ-${Math.random().toString(36).substr(2, 7).toUpperCase()}`;
     
     const newPending: PendingIssue = {
       id: newTxId,
@@ -199,28 +228,29 @@ const App: React.FC = () => {
         setIsCheckingOut(false);
         setIsCartOpen(false);
       } else {
+        await db.updatePendingIssues([newPending]);
         const updatedPending = [newPending, ...(pendingIssues || [])];
-        await db.updatePendingIssues(updatedPending);
         setPendingIssues([...updatedPending]);
         setCart([]); 
+        setActiveExternalRequestId(null);
         setIsCheckingOut(false); 
         setIsCartOpen(false); 
         notify(`Request Queued: ${newTxId}`);
         setView('pending');
       }
-    } catch (e: any) {
-      notifyError(`Queue Failed: ${e.message}`);
+    } catch (e: unknown) {
+      notifyError(`Queue Failed: ${(e as Error).message}`);
     }
   };
 
   const handleDeletePending = async (id: string) => {
     try {
+      await db.deletePendingIssue(id);
       const updated = (pendingIssues || []).filter(p => p.id !== id);
-      await db.updatePendingIssues(updated);
       setPendingIssues([...updated]);
       notify('Request Removed');
-    } catch (e: any) {
-      notifyError(`Delete Failed: ${e.message}`);
+    } catch (e: unknown) {
+      notifyError(`Delete Failed: ${(e as Error).message}`);
     }
   };
 
@@ -230,8 +260,8 @@ const App: React.FC = () => {
       await db.updateTransactions([]);
       setTransactions([]);
       notify('History Cleared');
-    } catch (e: any) {
-      notifyError(`Clear Failed: ${e.message}`);
+    } catch (e: unknown) {
+      notifyError(`Clear Failed: ${(e as Error).message}`);
     }
   };
 
@@ -239,47 +269,69 @@ const App: React.FC = () => {
     const el = document.getElementById(`receipt-${req.id}`);
     if (!el) return;
     el.style.display = 'block';
-    const canvas = await html2canvas(el, { scale: 2 });
-    el.style.display = 'none';
-    const link = document.createElement('a');
-    link.download = `Sunlight_Receipt_${req.id}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+    try {
+      const dataUrl = await domtoimage.toPng(el, { 
+        bgcolor: '#ffffff',
+        width: 600,
+        height: el.offsetHeight,
+        style: {
+          display: 'block'
+        }
+      });
+      el.style.display = 'none';
+      const link = document.createElement('a');
+      link.download = `Sunlight_Receipt_${req.id}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (error) {
+      console.error('Error generating receipt:', error);
+      el.style.display = 'none';
+    }
   };
 
   const handleFinalRelease = async () => {
     if (!activeRequestToFinalize || !signature || !receiverName || isGuest) return;
-    let updatedInventory = [...inventory];
-    let newTransactions: Transaction[] = [];
+    const updatedInventory = [...inventory];
+    const newTransactions: Transaction[] = [];
 
     for (const item of activeRequestToFinalize.items) {
       const invItem = updatedInventory.find(i => i.id === item.itemId);
-      const stockInZone = invItem?.stock[item.zone] || 0;
-      if (stockInZone < item.quantity) {
-        alert(`Insufficient Stock: ${item.name} in ${item.zone.split(' (')[0]}`);
+      const totalStock = Object.values(invItem?.stock || {}).reduce((a, b) => (a as number) + (b as number), 0);
+      if (totalStock < item.quantity) {
+        alert(`Insufficient Stock: ${item.name} (Total Available: ${totalStock})`);
         return;
       }
     }
 
+    const modifiedItems: InventoryItem[] = [];
+
     activeRequestToFinalize.items.forEach(cartItem => {
-      let invIndex = updatedInventory.findIndex(i => i.id === cartItem.itemId);
+      const invIndex = updatedInventory.findIndex(i => i.id === cartItem.itemId);
       if (invIndex === -1) return;
-      let item = { ...updatedInventory[invIndex] };
+      const item = JSON.parse(JSON.stringify(updatedInventory[invIndex]));
       let remainingToDeduct = cartItem.quantity;
-      let itemBatchesInZone = (item.batches || [])
-        .filter(b => b.zone === cartItem.zone && b.quantity > 0)
+      
+      // Get all batches with quantity > 0, sorted by expiry (FIFO)
+      const availableBatches = (item.batches || [])
+        .filter(b => b.quantity > 0)
         .sort((a, b) => new Date(a.expiry).getTime() - new Date(b.expiry).getTime());
 
-      for (let batch of itemBatchesInZone) {
+      for (const batch of availableBatches) {
         if (remainingToDeduct <= 0) break;
-        let bIdx = item.batches.findIndex(ob => ob.id === batch.id && ob.zone === cartItem.zone);
-        let deduct = Math.min(batch.quantity, remainingToDeduct);
+        const bIdx = item.batches.findIndex(ob => ob.id === batch.id && ob.zone === batch.zone);
+        if (bIdx === -1) continue;
+
+        const deduct = Math.min(batch.quantity, remainingToDeduct);
         item.batches[bIdx] = { ...item.batches[bIdx], quantity: item.batches[bIdx].quantity - deduct };
         remainingToDeduct -= deduct;
       }
-      updatedInventory[invIndex] = syncAggregates(item);
+      
+      const updatedItem = syncAggregates(item);
+      updatedInventory[invIndex] = updatedItem;
+      modifiedItems.push(updatedItem);
+
       newTransactions.push({ 
-        id: `TX-${activeRequestToFinalize.id}-${cartItem.sku}`, 
+        id: `TX-${activeRequestToFinalize.id}-${cartItem.sku}-${Date.now()}`, 
         timestamp: new Date().toISOString(), 
         user: currentUser?.name || 'Unknown', 
         action: 'ISSUE', 
@@ -287,7 +339,7 @@ const App: React.FC = () => {
         itemSku: cartItem.sku, 
         itemName: cartItem.name, 
         itemUom: cartItem.uom, 
-        destZone: cartItem.zone, 
+        destZone: cartItem.zone, // Kept for reference, though it might be mixed
         department: activeRequestToFinalize.department, 
         receiverName: receiverName, 
         signature: signature
@@ -296,11 +348,19 @@ const App: React.FC = () => {
 
     try {
       const finalizedReq = { ...activeRequestToFinalize, signature, receiverName, status: 'released' as const };
-      await db.updateInventory(updatedInventory);
+      
+      await db.updateInventory(modifiedItems);
       await db.addTransactions(newTransactions);
       
+      // Update the request status in DB (UPSERT)
+      await db.updatePendingIssues([finalizedReq]);
+      
+      // If it's an external request, update the external DB status
+      if (finalizedReq.id.startsWith('SGHC')) {
+        await db.updateExternalRequestStatus(finalizedReq.id, 'Released');
+      }
+      
       const remainingPending = (pendingIssues || []).filter(pi => pi.id !== activeRequestToFinalize.id);
-      await db.updatePendingIssues(remainingPending);
 
       setInventory([...updatedInventory]);
       setTransactions(prev => [...newTransactions, ...(prev || [])]);
@@ -308,6 +368,7 @@ const App: React.FC = () => {
       
       setIsFinalizingIssue(false);
       setCart([]);
+      setActiveExternalRequestId(null);
       
       setReceiptToExport(finalizedReq);
       setTimeout(() => {
@@ -319,8 +380,9 @@ const App: React.FC = () => {
       }, 500);
 
       notify(`Released & Receipt Generated`);
-    } catch (e: any) {
-      notifyError(`Release Failed: ${e.message}`);
+    } catch (e: unknown) {
+      console.error("Release failed:", e);
+      notifyError(`Release Failed: ${(e as Error).message}`);
     }
   };
 
@@ -328,7 +390,7 @@ const App: React.FC = () => {
     if (!newItemData.name || (newItemData.receivedQty || 0) <= 0 || isGuest) return;
     
     const existingItem = (inventory || []).find(i => i.name.toLowerCase() === newItemData.name?.toLowerCase());
-    let updatedInventory = [...inventory];
+    const updatedInventory = [...inventory];
     
     const newBatch: StockBatch = {
       id: `BAT-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
@@ -337,11 +399,14 @@ const App: React.FC = () => {
       zone: newItemData.restockZone || availableZones[0]
     };
 
+    let modifiedItem: InventoryItem;
+
     if (existingItem) {
       const idx = updatedInventory.findIndex(i => i.id === existingItem.id);
-      let updatedItem = { ...existingItem };
+      const updatedItem = { ...existingItem };
       updatedItem.batches = [...(updatedItem.batches || []), newBatch];
-      updatedInventory[idx] = syncAggregates(updatedItem);
+      modifiedItem = syncAggregates(updatedItem);
+      updatedInventory[idx] = modifiedItem;
     } else {
       const item: InventoryItem = {
         id: `item-${Date.now()}`,
@@ -357,7 +422,8 @@ const App: React.FC = () => {
         stock: {},
         earliestExpiry: newBatch.expiry
       };
-      updatedInventory.push(syncAggregates(item));
+      modifiedItem = syncAggregates(item);
+      updatedInventory.push(modifiedItem);
     }
 
     const tx: Transaction = { 
@@ -372,15 +438,15 @@ const App: React.FC = () => {
     };
 
     try {
-      await db.updateInventory(updatedInventory);
+      await db.updateInventory([modifiedItem]);
       await db.addTransactions([tx]);
       setInventory([...updatedInventory]);
       setTransactions(prev => [tx, ...(prev || [])]);
       setIsAddingItem(false);
       setNewItemData({ name: '', sku: '', category: '', uom: 'Units', unitCost: 0, parStock: 0, receivedQty: 1, restockZone: '', expiryDate: '', notExpiring: false });
       notify("Stock Received");
-    } catch (e: any) {
-      notifyError(`Receive Failed: ${e.message}`);
+    } catch (e: unknown) {
+      notifyError(`Receive Failed: ${(e as Error).message}`);
     }
   };
 
@@ -389,25 +455,25 @@ const App: React.FC = () => {
     try {
       const updatedWithAggregates = syncAggregates(isEditingItem);
       const updated = (inventory || []).map(i => i.id === updatedWithAggregates.id ? updatedWithAggregates : i);
-      await db.updateInventory(updated);
+      await db.updateInventory([updatedWithAggregates]);
       setInventory([...updated]);
       setIsEditingItem(null);
       notify("Item Updated");
-    } catch (e: any) {
-      notifyError(`Update Failed: ${e.message}`);
+    } catch (e: unknown) {
+      notifyError(`Update Failed: ${(e as Error).message}`);
     }
   };
 
   const handleDeleteItem = async () => {
     if (!isEditingItem || isGuest) return;
     try {
+      await db.deleteInventoryItem(isEditingItem.id);
       const updated = (inventory || []).filter(i => i.id !== isEditingItem.id);
-      await db.updateInventory(updated);
       setInventory([...updated]);
       setIsEditingItem(null);
       notify("Item Registry Erased");
-    } catch (e: any) {
-      notifyError(`Delete Failed: ${e.message}`);
+    } catch (e: unknown) {
+      notifyError(`Delete Failed: ${(e as Error).message}`);
     }
   };
 
@@ -419,13 +485,13 @@ const App: React.FC = () => {
       if (key === 'departments') setAvailableDepartments([...newList]);
       else setAvailableCategories([...newList]);
       notify(`${key.charAt(0).toUpperCase() + key.slice(1)} Updated`);
-    } catch (e: any) {
-      notifyError(`Config Update Failed: ${e.message}`);
+    } catch (e: unknown) {
+      notifyError(`Config Update Failed: ${(e as Error).message}`);
     }
   };
 
   const handleVerifyPassword = async () => {
-    let stored = await db.getAdminPassword();
+    const stored = await db.getAdminPassword();
     if (passwordInput === stored) {
       if (pendingUser) setCurrentUser(pendingUser);
       setIsPasswordPromptOpen(false); setIsUserSelectorOpen(false); setPendingUser(null); setPasswordInput('');
@@ -444,19 +510,23 @@ const App: React.FC = () => {
       } else {
         notifyError("Connection Failed");
       }
-    } catch (e: any) {
-      notifyError(`Connection Error: ${e.message}`);
+    } catch (e: unknown) {
+      notifyError(`Connection Error: ${(e as Error).message}`);
     } finally {
       setIsLoadingData(false);
     }
+  };
+
+  const handleAuditCountChange = (itemId: string, count: number) => {
+    setAuditCounts(prev => ({ ...prev, [itemId]: count }));
   };
 
   const handleCloudDisconnect = async () => {
     if (isGuest) return;
     if (confirm("Reset to default production database?")) {
       await db.disconnectCloud();
-      setTursoUrl("libsql://database-red-tree-vercel-icfg-tf7wnf43zngjwvbur4t9rp6n.aws-us-east-1.turso.io");
-      setTursoToken("eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzA4ODM2NDEsImlkIjoiZGUyZjlkZTgtOTEzYS00YzE1LThlMzMtMzhlYTMzMGFkNzI5IiwicmlkIjoiYzNhZDBiYmMtNTI0My00NTQzLThhOTgtYmI4MjI2ZDc2MjUzIn0.8gOpqGrKkuO5LTP8PvBWZJjMskckorIyyPedTVeIZHSXqCtebkp2AQvl-2VPRZchEtizL8MJxQTZR2Da4tj4CQ");
+            setTursoUrl(process.env.VITE_TURSO_URL);
+      setTursoToken(process.env.VITE_TURSO_TOKEN);
       await loadAppData();
       setIsCloudSetupOpen(false);
       notify("Cloud Disconnected");
@@ -465,7 +535,7 @@ const App: React.FC = () => {
 
   const showLowParReport = () => {
     const lowParItems = (inventory || []).filter(item => {
-      const totalStock = Object.values(item.stock || {}).reduce((a, b) => a + b, 0);
+      const totalStock = Object.values(item.stock || {}).reduce((a, b) => (a as number) + (b as number), 0);
       return totalStock <= (item.parStock || 0);
     }).sort((a, b) => new Date(a.earliestExpiry).getTime() - new Date(b.earliestExpiry).getTime());
     setReportModal({ open: true, title: 'Low Par Stock Items', items: lowParItems });
@@ -479,6 +549,86 @@ const App: React.FC = () => {
       return diffDays <= 90;
     }).sort((a, b) => new Date(a.earliestExpiry).getTime() - new Date(b.earliestExpiry).getTime());
     setReportModal({ open: true, title: 'Near Expiry Audit', items: nearExpiryItems });
+  };
+
+
+
+  const handleExportAuditToXLSX = () => {
+    const now = new Date('2026-02-22T12:14:34-08:00');
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // --- Audit Report Sheet --- 
+    const auditHeaders = ['Item', 'UOM', 'Beginning Stock', 'Inbound', 'Issued', 'Expected Count', 'Actual Count', 'Variance', 'Unit Price', 'Total Price'];
+    let grandTotal = 0;
+    const auditRows = inventory.map(item => {
+      const currentStock = Object.values(item.stock).reduce((a, b) => a + b, 0);
+      const inboundTx = transactions.filter(t => t.itemSku === item.sku && t.action === 'RECEIVE' && new Date(t.timestamp) >= startOfMonth);
+      const issuedTx = transactions.filter(t => t.itemSku === item.sku && t.action === 'ISSUE' && new Date(t.timestamp) >= startOfMonth);
+      const inboundCount = inboundTx.reduce((sum, t) => sum + t.qty, 0);
+      const issuedCount = issuedTx.reduce((sum, t) => sum + t.qty, 0);
+      const beginningStock = currentStock - inboundCount + issuedCount;
+      const expectedCount = beginningStock + inboundCount - issuedCount;
+      const actualCount = auditCounts[item.id] ?? 0;
+      const variance = actualCount - expectedCount;
+      const unitPrice = item.unitCost || 0;
+      const totalPrice = actualCount * unitPrice;
+      grandTotal += totalPrice;
+
+      return [item.name, item.uom, beginningStock, inboundCount, issuedCount, expectedCount, actualCount, variance, unitPrice, totalPrice];
+    });
+
+    const auditData = [
+      ['SUNLIGHT Hotel, Coron - Inventory Audit'],
+      [],
+      auditHeaders,
+      ...auditRows,
+      [],
+      ['', '', '', '', '', '', '', '', 'Grand Total:', grandTotal]
+    ];
+
+    // --- Consumption Report Sheet ---
+    const consumptionHeaders = ['Month', 'Department', 'Item', 'Total Quantity', 'Unit Price', 'Total Price Issued'];
+    const issues = transactions.filter(t => t.action === 'ISSUE');
+    const grouped: Record<string, Record<string, { qty: number, sku: string }>> = {};
+
+    issues.forEach(t => {
+      const date = new Date(t.timestamp);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const dept = t.department || 'Unassigned';
+      if (!grouped[monthKey]) grouped[monthKey] = {};
+      if (!grouped[monthKey][dept]) grouped[monthKey][dept] = {};
+      if (!grouped[monthKey][dept][t.itemName]) grouped[monthKey][dept][t.itemName] = { qty: 0, sku: t.itemSku };
+      grouped[monthKey][dept][t.itemName].qty += t.qty;
+    });
+
+    const consumptionRows: (string | number)[][] = [];
+    Object.keys(grouped).sort().reverse().forEach(month => {
+      Object.keys(grouped[month]).sort().forEach(dept => {
+        Object.keys(grouped[month][dept]).sort().forEach(itemName => {
+          const { qty, sku } = grouped[month][dept][itemName];
+          const itemInfo = inventory.find(i => i.sku === sku);
+          const unitPrice = itemInfo?.unitCost || 0;
+          consumptionRows.push([month, dept, itemName, qty, unitPrice, qty * unitPrice]);
+        });
+      });
+    });
+
+    const consumptionData = [
+      ['SUNLIGHT Hotel, Coron - Consumption Report'],
+      [],
+      consumptionHeaders,
+      ...consumptionRows
+    ];
+
+    // --- Create Workbook ---
+    const wb = XLSX.utils.book_new();
+    const auditSheet = XLSX.utils.aoa_to_sheet(auditData);
+    const consumptionSheet = XLSX.utils.aoa_to_sheet(consumptionData);
+    XLSX.utils.book_append_sheet(wb, auditSheet, 'Audit Report');
+    XLSX.utils.book_append_sheet(wb, consumptionSheet, 'Consumption Report');
+
+    XLSX.writeFile(wb, `Sunlight_Audit_Report_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}.xlsx`);
+    notify("Audit Report Exported");
   };
 
   const exportReportToCSV = (title: string, items: InventoryItem[]) => {
@@ -503,8 +653,9 @@ const App: React.FC = () => {
 
   const stockValue = useMemo(() => {
     return (inventory || []).reduce((total, item) => {
-      const totalQty = Object.values(item.stock || {}).reduce((sum, qty) => (sum as number) + (qty as number), 0);
-      return total + ((totalQty as number) * (item.unitCost || 0));
+      // Fix: Cast Object.values to number[] to resolve unknown operand error in reduce addition
+      const totalQty = (Object.values(item.stock || {}) as number[]).reduce((sum, qty) => sum + qty, 0);
+      return total + (totalQty * (item.unitCost || 0));
     }, 0);
   }, [inventory]);
 
@@ -647,13 +798,13 @@ const App: React.FC = () => {
               <h4 className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-4 text-center">Operation Centers</h4>
               <div className="grid grid-cols-2 gap-2.5">
                 <button 
-                  disabled={isGuest}
                   onClick={() => setIsAddingItem(true)} 
-                  className="flex flex-col items-center gap-2 p-4 bg-green-50 rounded-2xl border border-green-100 active:scale-95 transition-all disabled:opacity-30"
+                  className="flex flex-col items-center gap-2 p-4 bg-emerald-50 rounded-2xl border border-emerald-100 group active:scale-95 transition-all"
                 >
-                  <div className="p-2.5 bg-white rounded-xl text-green-600 shadow-sm"><PlusCircle size={20}/></div>
-                  <span className="text-[9px] font-black uppercase text-green-900 tracking-wider">Receive</span>
+                  <div className="p-2.5 bg-white rounded-xl text-emerald-600 shadow-sm"><PlusCircle size={20}/></div>
+                  <span className="text-[9px] font-black uppercase text-emerald-900 tracking-wider">Stock Inbound</span>
                 </button>
+
                 <button 
                   onClick={() => setView('inventory')} 
                   className="flex flex-col items-center gap-2 p-4 bg-blue-50 rounded-2xl border border-blue-100 group active:scale-95 transition-all"
@@ -679,6 +830,20 @@ const App: React.FC = () => {
                   <div className="p-2 bg-white rounded-lg text-amber-600 shadow-sm"><CalendarClock size={14}/></div>
                   <p className="text-[9px] font-black uppercase text-amber-900 leading-tight">Near Exp</p>
                 </button>
+                <button onClick={() => setIsAuditMode(!isAuditMode)} className={`flex items-center gap-2.5 p-3 rounded-xl border active:scale-95 transition-all ${
+                  isAuditMode
+                    ? 'bg-green-100 border-green-200'
+                    : 'bg-gray-50 border-gray-100'
+                }`}>
+                  <div className={`p-2 bg-white rounded-lg shadow-sm ${isAuditMode ? 'text-green-600' : 'text-gray-600'}`}><FileText size={14}/></div>
+                  <p className={`text-[9px] font-black uppercase leading-tight ${isAuditMode ? 'text-green-900' : 'text-gray-900'}`}>{isAuditMode ? 'Exit Audit' : 'Audit Mode'}</p>
+                </button>
+                {isAuditMode && (
+                  <button onClick={handleExportAuditToXLSX} className="flex items-center gap-2.5 p-3 bg-red-50 rounded-xl border border-red-100 active:scale-95 transition-all col-span-2">
+                    <div className="p-2 bg-white rounded-lg text-red-600 shadow-sm"><FileOutput size={14}/></div>
+                    <p className="text-[9px] font-black uppercase text-red-900 leading-tight">Export Excel</p>
+                  </button>
+                )}
                 <button onClick={() => setView('history')} className="flex items-center gap-2.5 p-3 bg-gray-50 rounded-xl border border-gray-100 active:scale-95 transition-all">
                   <div className="p-2 bg-white rounded-lg text-gray-600 shadow-sm"><History size={14}/></div>
                   <p className="text-[9px] font-black uppercase text-gray-900 leading-tight">Logs</p>
@@ -735,7 +900,7 @@ const App: React.FC = () => {
                  <ItemCard 
                     key={item.id} 
                     item={item} 
-                    selectedZone={selectedZone as any} 
+                    selectedZone={selectedZone as Zone} 
                     onIssue={(i, q, forcedZone) => {
                       if (isGuest) return;
                       setCart(prev => {
@@ -747,6 +912,9 @@ const App: React.FC = () => {
                       notify("Added to Cart");
                     }} 
                     onEdit={(i) => { if (!isGuest) setIsEditingItem(i); }} 
+                    isAuditMode={isAuditMode}
+                    auditCount={auditCounts[item.id]}
+                    onAuditCountChange={handleAuditCountChange}
                  />
                ))}
                {filteredInventory?.length === 0 && <div className="py-24 text-center text-gray-200 uppercase font-black text-[10px] tracking-[0.2em]">No registry matches found</div>}
@@ -921,6 +1089,8 @@ const App: React.FC = () => {
                 >
                   Test Server Connection
                 </button>
+
+
               </div>
             </div>
 
@@ -982,6 +1152,9 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+
+      {/* Requisition Form Scanner Overlay */}
+
 
       {/* Turso Cloud Setup Modal */}
       {isCloudSetupOpen && (
@@ -1081,7 +1254,7 @@ const App: React.FC = () => {
       {/* Report / Audit Modal */}
       {reportModal.open && (
         <div className="fixed inset-0 z-[2500] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-[2.5rem] p-6 shadow-2xl flex flex-col max-h-[85vh]">
+          <div className="bg-white w-full max-lg rounded-[2.5rem] p-6 shadow-2xl flex flex-col max-h-[85vh]">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
                <div>
                  <h3 className="text-sm font-black uppercase tracking-widest text-[#800000]">{reportModal.title}</h3>
@@ -1104,7 +1277,7 @@ const App: React.FC = () => {
                   </div>
                 </div>
               ))}
-              {reportModal.items?.length === 0 && <div className="py-20 text-center text-gray-200 uppercase font-black text-[10px]">No matches found</div>}
+              {reportModal.items?.length === 0 && <div className="py-20 text-center text-gray-200 uppercase font-black text-[9px]">No matches found</div>}
             </div>
 
             <div className="pt-4 border-t flex gap-3">
@@ -1233,7 +1406,7 @@ const App: React.FC = () => {
         ].map(item => (
           <button 
             key={item.id} 
-            onClick={() => setView(item.id as any)} 
+            onClick={() => setView(item.id as 'dashboard' | 'inventory' | 'pending' | 'history' | 'settings')} 
             className={`flex flex-col items-center justify-center gap-0.5 w-full h-full transition-all relative ${view === item.id ? 'text-[#800000]' : 'text-gray-300'}`}
           >
             {item.id === 'pending' && (pendingIssues?.length || 0) > 0 && (
@@ -1263,7 +1436,10 @@ const App: React.FC = () => {
                  <div>
                     <h3 className="text-sm font-black uppercase tracking-widest">Draft({cart?.length || 0})</h3>
                  </div>
-                 <button onClick={() => setIsCartOpen(false)} className="p-1"><X size={22}/></button>
+                 <div className="flex gap-2">
+                    <button onClick={() => setIsRequestPickerOpen(true)} className="p-1" title="Pick Request"><FileText size={22}/></button>
+                    <button onClick={() => setIsCartOpen(false)} className="p-1"><X size={22}/></button>
+                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar bg-gray-50/30">
                 {(cart || []).map((item, idx) => (
@@ -1298,6 +1474,117 @@ const App: React.FC = () => {
                 </button>
               </div>
            </div>
+        </div>
+      )}
+
+      {/* Request Picker Modal */}
+      {isRequestPickerOpen && (
+        <div className="fixed inset-0 z-[2200] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-lg rounded-[2.5rem] p-6 shadow-2xl flex flex-col max-h-[85vh] animate-in zoom-in-95">
+             <div className="flex justify-between items-center mb-6 border-b pb-4">
+               <div>
+                 <h3 className="text-sm font-black uppercase tracking-widest text-[#800000]">Select Request</h3>
+                 <p className="text-[9px] font-bold text-gray-400 uppercase">{(externalRequests || []).filter(r => r.status === 'pending' || r.status === 'in progress').length} pending requests</p>
+               </div>
+               <div className="flex gap-2">
+                  <button onClick={() => loadAppData()} className={`p-2 bg-gray-50 rounded-xl text-blue-600 hover:bg-blue-50 transition-colors ${isSyncing ? 'animate-spin' : ''}`} title="Sync Requests">
+                    <RefreshCw size={20}/>
+                  </button>
+                  <button onClick={() => setIsRequestPickerOpen(false)} className="p-2 bg-gray-50 rounded-xl text-gray-400"><X size={20}/></button>
+               </div>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto no-scrollbar space-y-3 pb-4">
+              {(externalRequests || []).filter(r => r.status === 'pending' || r.status === 'in progress').map(req => (
+                <div key={req.id} className={`bg-gray-50 border rounded-2xl overflow-hidden transition-all ${req.status === 'in progress' ? 'border-blue-200' : ''}`}>
+                  <div 
+                    className="p-4 flex justify-between items-center cursor-pointer hover:bg-gray-100"
+                    onClick={() => setExpandedRequestId(expandedRequestId === req.id ? null : req.id)}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{req.id}</span>
+                          <span className="text-[8px] font-bold text-gray-300 uppercase">• {new Date(req.timestamp).toLocaleDateString()}</span>
+                          {req.status === 'in progress' && (
+                            <span className="text-[7px] font-black bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full uppercase tracking-tighter">In Progress</span>
+                          )}
+                      </div>
+                      <p className="text-[11px] font-black text-gray-800 uppercase leading-none mb-1">{req.department}</p>
+                      <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">
+                        {req.user} • {req.items.length} items
+                      </p>
+                    </div>
+                    <div className="text-gray-400">
+                      {expandedRequestId === req.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                    </div>
+                  </div>
+                  
+                  {expandedRequestId === req.id && (
+                    <div className="bg-white border-t border-gray-100 p-4 animate-in slide-in-from-top-2 duration-200">
+                      <div className="space-y-2 mb-4">
+                        <h4 className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Requested Items</h4>
+                        {req.items.map((item, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-[10px] py-1 border-b border-gray-50 last:border-0">
+                            <span className="font-bold text-gray-700 uppercase">{item.name}</span>
+                            <span className="font-black text-[#800000]">{item.quantity} {item.uom}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <button 
+                        onClick={async () => {
+                          const consolidated: CartItem[] = [];
+                          const normalize = (s: string) => (s || '').trim().toLowerCase();
+                          
+                          req.items.forEach(item => {
+                            const invItem = inventory.find(i => 
+                              normalize(i.name) === normalize(item.name) || 
+                              (item.sku && normalize(i.sku) === normalize(item.sku))
+                            );
+                            
+                            const correctId = invItem ? invItem.id : item.itemId;
+                            const correctName = invItem ? invItem.name : item.name;
+                            const correctSku = invItem ? invItem.sku : item.sku;
+                            const correctUom = invItem ? invItem.uom : item.uom;
+                            
+                            const existing = consolidated.find(c => c.itemId === correctId);
+                            if (existing) {
+                              existing.quantity += item.quantity;
+                            } else {
+                              consolidated.push({ 
+                                ...item, 
+                                itemId: correctId,
+                                name: correctName,
+                                sku: correctSku,
+                                uom: correctUom
+                              });
+                            }
+                          });
+
+                          try {
+                            // Update external status to In Progress
+                            await db.updateExternalRequestStatus(req.id, 'In Progress');
+                            setActiveExternalRequestId(req.id);
+                            setCart(consolidated);
+                            setReceiverDept(req.department);
+                            setIsRequestPickerOpen(false);
+                            setIsCartOpen(true);
+                            notify("Request Loaded & Marked In Progress");
+                            loadAppData(true); // Refresh to show updated status
+                          } catch {
+                            notifyError("Failed to update request status");
+                          }
+                        }}
+                        className="w-full py-3 bg-[#800000] text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-md flex items-center justify-center gap-2 active:scale-95 transition-all"
+                      >
+                        <FileText size={14} /> Pick Request & Load to Cart
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {externalRequests?.length === 0 && <div className="py-20 text-center text-gray-200 uppercase font-black text-[9px]">No pending requests</div>}
+            </div>
+          </div>
         </div>
       )}
 

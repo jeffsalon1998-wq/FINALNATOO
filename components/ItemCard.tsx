@@ -1,7 +1,6 @@
-
 import React, { useState } from 'react';
 import { InventoryItem, Zone } from '../types';
-import { COLORS } from '../constants';
+
 import { Minus, Plus as PlusIcon, Edit3, ChevronRight, MapPin } from 'lucide-react';
 
 interface ItemCardProps {
@@ -9,17 +8,23 @@ interface ItemCardProps {
   selectedZone: Zone | 'All Zones';
   onIssue: (item: InventoryItem, qty: number, targetZone?: string) => void;
   onEdit: (item: InventoryItem) => void;
+  isAuditMode: boolean;
+  auditCount?: number;
+  onAuditCountChange: (itemId: string, count: number) => void;
 }
 
-export const ItemCard: React.FC<ItemCardProps> = ({ item, selectedZone, onIssue, onEdit }) => {
+export const ItemCard: React.FC<ItemCardProps> = ({ item, selectedZone, onIssue, onEdit, isAuditMode, auditCount, onAuditCountChange }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const isGlobal = selectedZone === 'All Zones';
   
+  // Fix: Explicitly cast Object.values to number[] for safe reduce addition
   const stockInZone = isGlobal 
-    ? Object.values(item.stock).reduce((a, b) => a + b, 0)
+    ? (Object.values(item.stock) as number[]).reduce((a, b) => a + b, 0)
     : (item.stock[selectedZone as string] || 0);
 
-  const totalStock = Object.values(item.stock).reduce((a, b) => a + b, 0);
+  // Fix: Explicitly cast Object.values to number[] to calculate totalStock correctly
+  const totalStock = (Object.values(item.stock) as number[]).reduce((a, b) => a + b, 0);
+  // Fix: Comparison works correctly now that totalStock is inferred as a number
   const isBelowPar = totalStock <= item.parStock * 0.4;
   
   const isPerpetual = item.earliestExpiry === '2099-12-31';
@@ -97,7 +102,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, selectedZone, onIssue,
       {/* Action Tray */}
       <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-64 opacity-100 mt-4 pt-4 border-t border-gray-50' : 'max-h-0 opacity-0'}`}>
         <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-          <div className="flex-1 flex items-center bg-gray-50 rounded-xl h-12 border border-gray-100">
+          <div className="flex-1 flex items-center justify-center bg-gray-50 rounded-xl h-12 border border-gray-100">
             <button 
               disabled={stockInZone === 0 || issueQty <= 1}
               onClick={() => handleQtyChange(issueQty - 1)}
@@ -105,9 +110,12 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, selectedZone, onIssue,
             >
               <Minus size={16} strokeWidth={3} />
             </button>
-            <div className="flex-1 h-full flex items-center justify-center text-sm font-black text-gray-800">
-              {issueQty}
-            </div>
+            <input 
+              type="number" 
+              value={issueQty}
+              onChange={e => handleQtyChange(parseInt(e.target.value, 10) || 1)}
+              className="h-full w-16 text-center bg-transparent text-sm font-black text-gray-800 outline-none"
+            />
             <button 
               disabled={stockInZone === 0 || issueQty >= stockInZone}
               onClick={() => handleQtyChange(issueQty + 1)}
@@ -133,6 +141,20 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, selectedZone, onIssue,
             <Edit3 size={18} />
           </button>
         </div>
+        {isAuditMode && (
+          <div className="mt-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center bg-green-50 border border-green-200 rounded-xl p-2">
+              <span className="text-green-800 font-black text-xs mr-4">AUDIT COUNT:</span>
+              <input 
+                type="number"
+                value={auditCount ?? ''}
+                placeholder="Enter count..."
+                onChange={(e) => onAuditCountChange(item.id, parseInt(e.target.value, 10) || 0)}
+                className="flex-1 w-full text-right bg-transparent text-lg font-black text-green-900 outline-none"
+              />
+            </div>
+          </div>
+        )}
         <div className="mt-4 flex items-center gap-2 text-[9px] font-black text-gray-400 uppercase tracking-wider">
           <MapPin size={12} className="text-[#800000]" />
           <span>Loc: {isGlobal ? 'Global FEFO' : selectedZone.split(' (')[0]}</span>

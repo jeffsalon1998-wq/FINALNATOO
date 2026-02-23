@@ -1,11 +1,15 @@
 import { createClient, Client } from "@libsql/client";
-import { InventoryItem, Transaction, User, PendingIssue } from './types';
+import { InventoryItem, Transaction, PendingIssue, SqlStatement, CartItem } from './types';
 import { INITIAL_INVENTORY, MOCK_USERS, ZONES, DEPARTMENTS } from './constants';
 
-const DEFAULT_URL = "libsql://database-red-tree-vercel-icfg-tf7wnf43zngjwvbur4t9rp6n.aws-us-east-1.turso.io";
-const DEFAULT_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzA4ODM2NDEsImlkIjoiZGUyZjlkZTgtOTEzYS00YzE1LThlMzMtMzhlYTMzMGFkNzI5IiwicmlkIjoiYzNhZDBiYmMtNTI0My00NTQzLThhOTgtYmI4MjI2ZDc2MjUzIn0.8gOpqGrKkuO5LTP8PvBWZJjMskckorIyyPedTVeIZHSXqCtebkp2AQvl-2VPRZchEtizL8MJxQTZR2Da4tj4CQ";
+const DEFAULT_URL = process.env.VITE_TURSO_URL;
+const DEFAULT_TOKEN = process.env.VITE_TURSO_TOKEN;
+
+const REQUEST_DB_URL = "libsql://prrequest-vercel-icfg-tf7wnf43zngjwvbur4t9rp6n.aws-us-east-1.turso.io";
+const REQUEST_DB_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzEwNjA0NDEsImlkIjoiNTEyODlkNzQtYzhjNi00YzllLTg2YjYtNjk1MTZlY2ZjNDgzIiwicmlkIjoiMzQyNmUyODUtYjhlNS00OWI2LWE0ZDktNDFmZTQ3MzE0ZjNjIn0.rqlTsVVTqoMowmh-2XO9pptsb77qdThUvOvyH95KNsTkCUaOKiO2DwHMnl72qET3ORXfFyHjELmyTu4rLMKuDA";
 
 let client: Client;
+let requestClient: Client;
 
 const getCredentials = () => {
   const url = localStorage.getItem('TURSO_URL') || DEFAULT_URL;
@@ -15,7 +19,15 @@ const getCredentials = () => {
 
 const initClient = () => {
   const { url, token } = getCredentials();
-  client = createClient({ url, authToken: token });
+  if (url && token) {
+    client = createClient({ url, authToken: token });
+  }
+  
+  // Initialize dedicated client for request picker
+  requestClient = createClient({
+    url: REQUEST_DB_URL,
+    authToken: REQUEST_DB_TOKEN
+  });
 };
 
 // Initial creation
@@ -39,7 +51,7 @@ export const db = {
     try {
       await client.execute("SELECT 1");
       return { success: true };
-    } catch (error: any) {
+    } catch (error) {
       console.error("Database connection test failed:", error);
       return { success: false, error: error.message };
     }
@@ -161,17 +173,17 @@ export const db = {
         batches: JSON.parse(String(row.batches_json || '[]')),
         earliestExpiry: String(row.earliest_expiry)
       }));
-    } catch (e) {
+    } catch (e: unknown) {
       console.error("Error fetching inventory:", e);
       throw e;
     }
   },
 
   async updateInventory(items: InventoryItem[]): Promise<void> {
-    const statements: any[] = [{ sql: "DELETE FROM inventory", args: [] }];
+    const statements: { sql: string; args: (string | number | null)[] }[] = [];
     items.forEach(item => {
       statements.push({
-        sql: `INSERT INTO inventory (id, sku, name, category, uom, unit_cost, par_stock, initial_par_stock, stock_json, batches_json, earliest_expiry) 
+        sql: `INSERT OR REPLACE INTO inventory (id, sku, name, category, uom, unit_cost, par_stock, initial_par_stock, stock_json, batches_json, earliest_expiry) 
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           item.id, item.sku, item.name, item.category, item.uom, item.unitCost, 
@@ -180,7 +192,16 @@ export const db = {
         ]
       });
     });
-    await client.batch(statements, "write");
+    if (statements.length > 0) {
+      await client.batch(statements, "write");
+    }
+  },
+
+  async deleteInventoryItem(id: string): Promise<void> {
+    await client.execute({
+      sql: "DELETE FROM inventory WHERE id = ?",
+      args: [id]
+    });
   },
 
   async getTransactions(): Promise<Transaction[]> {
@@ -190,7 +211,7 @@ export const db = {
         id: String(row.id),
         timestamp: String(row.timestamp),
         user: String(row.user_name),
-        action: row.action as any,
+        action: row.action as 'ISSUE' | 'RECEIVE',
         qty: Number(row.qty),
         itemSku: String(row.item_sku),
         itemName: String(row.item_name),
@@ -200,7 +221,7 @@ export const db = {
         receiverName: String(row.receiver_name || ''),
         signature: String(row.signature || '')
       }));
-    } catch (e) {
+    } catch (e: unknown) {
       console.error("Error fetching transactions:", e);
       throw e;
     }
@@ -222,7 +243,7 @@ export const db = {
   },
   
   async updateTransactions(txs: Transaction[]): Promise<void> {
-    const statements: any[] = [{ sql: "DELETE FROM transactions", args: [] }];
+    const statements: { sql: string; args: (string | number | null)[] }[] = [{ sql: "DELETE FROM transactions", args: [] }];
     txs.forEach(tx => {
       statements.push({
         sql: `INSERT INTO transactions (id, timestamp, user_name, action, qty, item_sku, item_name, item_uom, dest_zone, department, receiver_name, signature)
@@ -248,19 +269,97 @@ export const db = {
         department: String(row.department),
         signature: String(row.signature || ''),
         items: JSON.parse(String(row.items_json || '[]')),
-        status: row.status as any
+        status: row.status as 'pending' | 'released',
       }));
-    } catch (e) {
+    } catch (e: unknown) {
       console.error("Error fetching pending issues:", e);
+      return [];
+    }
+  },
+
+  async getExternalRequests(): Promise<PendingIssue[]> {
+    try {
+      if (!requestClient) {
+        console.warn("Request DB client not initialized");
+        return [];
+      }
+      // Fetch from 'requisitions' table
+      const res = await requestClient.execute("SELECT * FROM requisitions ORDER BY date DESC");
+      
+      const issues: PendingIssue[] = [];
+
+      for (const row of res.rows) {
+        const id = String(row.id);
+        let items: CartItem[] = [];
+
+        try {
+          // Parse items from JSON blob in 'items' column
+          const rawItems = JSON.parse(String(row.items || '[]'));
+          
+          if (Array.isArray(rawItems)) {
+            items = rawItems
+              .filter((i: { source?: string }) => i.source === 'Warehouse') // Filter for Warehouse items
+              .map((i: { id?: string; sku?: string; name?: string; quantity?: number; unit?: string }) => ({
+                itemId: String(i.id || `item-${Math.random()}`),
+                sku: String(i.sku || ''),
+                name: String(i.name || 'Unknown Item'),
+                quantity: Number(i.quantity || 0),
+                zone: 'Main', // Default zone
+                uom: String(i.unit || 'Units')
+              }));
+          }
+        } catch (e) {
+          console.warn(`Failed to parse items for requisition ${id}`, e);
+        }
+
+        const dbStatus = String(row.status).toLowerCase();
+        let appStatus: 'pending' | 'released' | 'in progress' = 'pending';
+        if (dbStatus === 'completed' || dbStatus === 'released') {
+          appStatus = 'released';
+        } else if (dbStatus === 'in progress') {
+          appStatus = 'in progress';
+        }
+
+        // Only include if there are warehouse items
+        if (items.length > 0) {
+          issues.push({
+            id: id,
+            timestamp: String(row.date),
+            user: String(row.requester),
+            receiverName: '',
+            department: String(row.department),
+            signature: '',
+            items: items,
+            status: appStatus,
+          });
+        }
+      }
+      
+      return issues;
+    } catch (e: unknown) {
+      console.error("Error fetching external requests:", e);
+      return [];
+    }
+  },
+
+  async updateExternalRequestStatus(id: string, status: string): Promise<void> {
+    try {
+      if (!requestClient) return;
+      await requestClient.execute({
+        sql: "UPDATE requisitions SET status = ? WHERE id = ?",
+        args: [status, id]
+      });
+    } catch (e) {
+      console.error(`Failed to update external request status for ${id}`, e);
       throw e;
     }
   },
 
   async updatePendingIssues(issues: PendingIssue[]): Promise<void> {
-    const statements: any[] = [{ sql: "DELETE FROM pending_issues", args: [] }];
+    const statements: { sql: string; args: (string | number | null)[] }[] = [];
     issues.forEach(req => {
       statements.push({
-        sql: `INSERT INTO pending_issues (id, timestamp, user_name, receiver_name, department, signature, items_json, status)
+        sql: `INSERT OR REPLACE INTO pending_issues (id, timestamp, user_name, receiver_name, department, signature, items_json, status)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           req.id, req.timestamp, req.user, req.receiverName || '', 
@@ -268,12 +367,21 @@ export const db = {
         ]
       });
     });
-    await client.batch(statements, "write");
+    if (statements.length > 0) {
+      await client.batch(statements, "write");
+    }
+  },
+
+  async deletePendingIssue(id: string): Promise<void> {
+    await client.execute({
+      sql: "DELETE FROM pending_issues WHERE id = ?",
+      args: [id]
+    });
   },
 
   async pushState(inventory: InventoryItem[], transactions: Transaction[], pendingIssues: PendingIssue[]): Promise<void> {
     try {
-      const statements: any[] = [
+      const statements: SqlStatement[] = [
         { sql: "DELETE FROM inventory", args: [] },
         { sql: "DELETE FROM transactions", args: [] },
         { sql: "DELETE FROM pending_issues", args: [] }
@@ -315,7 +423,7 @@ export const db = {
       });
 
       await client.batch(statements, "write");
-    } catch (e) {
+    } catch (e: unknown) {
       console.error("Atomic state push failed:", e);
       throw e;
     }
@@ -328,19 +436,19 @@ export const db = {
         args: ["system_config"]
       });
       return res.rows.length > 0 ? JSON.parse(String(res.rows[0].value_json)) : { categories: [], departments: [], zones: [] };
-    } catch (e) {
+    } catch (e: unknown) {
       console.error("Error fetching config:", e);
       return { categories: [], departments: [], zones: [] };
     }
   },
 
-  async saveConfig(config: any) {
+  async saveConfig(config: { categories: string[]; departments: string[]; zones: string[] }) {
     try {
       await client.execute({
         sql: "INSERT OR REPLACE INTO config (key, value_json) VALUES (?, ?)",
         args: ["system_config", JSON.stringify(config)]
       });
-    } catch (e) {
+    } catch (e: unknown) {
       console.error("Error saving config:", e);
       throw e;
     }
@@ -353,7 +461,8 @@ export const db = {
         args: ["admin_password"]
       });
       return res.rows.length > 0 ? JSON.parse(String(res.rows[0].value_json)) : '1234';
-    } catch (e) {
+    } catch (err: unknown) {
+      console.error("Error fetching admin password:", err);
       return '1234';
     }
   },
@@ -364,7 +473,7 @@ export const db = {
         sql: "INSERT OR REPLACE INTO config (key, value_json) VALUES (?, ?)",
         args: ["admin_password", JSON.stringify(password)]
       });
-    } catch (e) {
+    } catch (e: unknown) {
       console.error("Error saving admin password:", e);
       throw e;
     }

@@ -60,7 +60,7 @@ export interface PendingIssue {
   department: string;
   signature?: string;
   items: CartItem[];
-  status: 'pending' | 'released';
+  status: 'pending' | 'released' | 'in progress';
 }
 
 export type UserRole = 'Guest' | 'Staff' | 'Manager';
@@ -78,4 +78,9 @@ export interface CartItem {
   quantity: number;
   zone: string;
   uom: string;
+}
+
+export interface SqlStatement {
+  sql: string;
+  args: (string | number | null)[];
 }
