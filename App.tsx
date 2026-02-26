@@ -19,7 +19,7 @@ import { SignaturePad } from './components/SignaturePad';
 import { db } from './db';
 
 
-const BRAND_YELLOW = "#FFD700"; 
+const BRAND_YELLOW = "#FFFF00"; 
 
 const GLOBAL_ZONE_KEY = 'All Zones';
 const GLOBAL_CATEGORY_KEY = 'All Categories';
@@ -31,6 +31,7 @@ const BrandLogo = ({ className = "", color = BRAND_YELLOW, scale = "text-5xl", s
       <span 
         className={`${scale} brand-script leading-[0.7]`} 
         style={{ 
+          fontFamily: 'Great Vibes, cursive',
           color,
           WebkitTextStroke: isYellow ? '0.8px black' : 'none',
           textShadow: isYellow ? '1px 1px 0px rgba(0,0,0,0.1)' : 'none'
@@ -38,7 +39,7 @@ const BrandLogo = ({ className = "", color = BRAND_YELLOW, scale = "text-5xl", s
       >
         Sunlight
       </span>
-      <span className={`${scale === 'text-8xl' ? 'text-sm' : subScale} brand-title uppercase tracking-[0.4em] mt-2 ${subClassName}`} style={{ color: isYellow ? 'rgba(0,0,0,0.7)' : '#4b5563' }}>Hotel, Coron</span>
+      <span className={`${scale === 'text-8xl' ? 'text-sm' : subScale} brand-title uppercase tracking-[0.4em] ${subClassName}`} style={{ marginTop: '-5px', color: isYellow ? 'rgba(0,0,0,0.7)' : '#4b5563' }}>Hotel, Coron</span>
     </div>
   );
 };
@@ -82,8 +83,10 @@ const App: React.FC = () => {
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
   const [pendingUser, setPendingUser] = useState<User | null>(null);
-  const [reportModal, setReportModal] = useState<{ open: boolean, title: string, items: InventoryItem[] }>({ open: false, title: '', items: [] });
+  const [reportModal, setReportModal] = useState<{ open: boolean, title: string, items: any[] }>({ open: false, title: '', items: [] });
+  const [reorderList, setReorderList] = useState<any[] | null>(null);
   const [isCloudSetupOpen, setIsCloudSetupOpen] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [isRequestPickerOpen, setIsRequestPickerOpen] = useState(false);
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
   const [externalRequests, setExternalRequests] = useState<PendingIssue[]>([]);
@@ -95,8 +98,28 @@ const App: React.FC = () => {
   const [activeExternalRequestId, setActiveExternalRequestId] = useState<string | null>(null);
   
   // Audit Mode
-  const [isAuditMode, setIsAuditMode] = useState(false);
-  const [auditCounts, setAuditCounts] = useState<Record<string, number>>({});
+  const [isAuditMode, setIsAuditMode] = useState(() => localStorage.getItem('isAuditMode') === 'true');
+  const [showAuditExitConfirm, setShowAuditExitConfirm] = useState(false);
+  const [auditCounts, setAuditCounts] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('auditCounts');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  useEffect(() => {
+    if (isAuditMode) {
+      localStorage.setItem('isAuditMode', 'true');
+    } else {
+      localStorage.removeItem('isAuditMode');
+    }
+  }, [isAuditMode]);
+
+  useEffect(() => {
+    if (Object.keys(auditCounts).length > 0) {
+      localStorage.setItem('auditCounts', JSON.stringify(auditCounts));
+    } else {
+      localStorage.removeItem('auditCounts');
+    }
+  }, [auditCounts]);
 
   // Transaction Finalization
   const [receiverName, setReceiverName] = useState('');
@@ -128,7 +151,7 @@ const App: React.FC = () => {
     try {
       if (!silent) setIsSyncing(true);
       if (!appInit) setIsLoadingData(true);
-      
+
       const isInitialized = await db.initialize();
       if (!isInitialized) {
         throw new Error("Failed to initialize database connection.");
@@ -156,11 +179,35 @@ const App: React.FC = () => {
       console.error("Failed to sync data:", err);
       setDbStatus({ connected: false, error: (err as Error).message });
       notifyError(`Sync Error: ${(err as Error).message || 'Database connection failed'}`);
+      if (!appInit) {
+        setIsCloudSetupOpen(true);
+      }
     } finally {
       setIsLoadingData(false);
       setIsSyncing(false);
       setAppInit(true);
     }
+  };
+
+  const handleToggleAudit = () => {
+    if (isAuditMode) {
+      setShowAuditExitConfirm(true);
+    } else {
+      setIsAuditMode(true);
+      notify("Audit Mode Started");
+    }
+  };
+
+  const confirmExitAudit = () => {
+    setIsAuditMode(false);
+    setAuditCounts({});
+    setShowAuditExitConfirm(false);
+    notify("Audit Ended");
+  };
+
+
+  const handleAuditCountChange = (itemId: string, count: number) => {
+    setAuditCounts(prev => ({ ...prev, [itemId]: count }));
   };
 
   useEffect(() => {
@@ -500,33 +547,28 @@ const App: React.FC = () => {
 
   const handleCloudConnect = async () => {
     if (!tursoUrl || !tursoToken || isGuest) return;
-    setIsLoadingData(true);
+    setIsConnecting(true);
     try {
-      const success = await db.setCredentials(tursoUrl, tursoToken);
+      const success = await db.setCredentials(tursoUrl!, tursoToken!);
       if (success) {
         await loadAppData();
         setIsCloudSetupOpen(false);
         notify("Cloud Synced Successfully");
       } else {
-        notifyError("Connection Failed");
+        notifyError("Connection Failed: Please check URL and Token.");
       }
     } catch (e: unknown) {
       notifyError(`Connection Error: ${(e as Error).message}`);
     } finally {
-      setIsLoadingData(false);
+      setIsConnecting(false);
     }
-  };
-
-  const handleAuditCountChange = (itemId: string, count: number) => {
-    setAuditCounts(prev => ({ ...prev, [itemId]: count }));
   };
 
   const handleCloudDisconnect = async () => {
     if (isGuest) return;
     if (confirm("Reset to default production database?")) {
       await db.disconnectCloud();
-            setTursoUrl(process.env.VITE_TURSO_URL);
-      setTursoToken(process.env.VITE_TURSO_TOKEN);
+      
       await loadAppData();
       setIsCloudSetupOpen(false);
       notify("Cloud Disconnected");
@@ -541,13 +583,60 @@ const App: React.FC = () => {
     setReportModal({ open: true, title: 'Low Par Stock Items', items: lowParItems });
   };
 
+  const generateReorderList = () => {
+    const thirtyDaysAgo = new Date(new Date('2026-02-22T12:14:34-08:00').getTime() - 30 * 24 * 60 * 60 * 1000);
+    const consumptionData: Record<string, number> = {};
+
+    transactions
+      .filter(t => t.action === 'ISSUE' && new Date(t.timestamp) >= thirtyDaysAgo)
+      .forEach(t => {
+        if (!consumptionData[t.itemSku]) {
+          consumptionData[t.itemSku] = 0;
+        }
+        consumptionData[t.itemSku] += t.qty;
+      });
+
+    const reorderItems = inventory
+      .map(item => {
+        const monthlyConsumption = consumptionData[item.sku] || 0;
+        const dailyConsumption = monthlyConsumption / 30;
+        const leadTimeDemand = dailyConsumption * 20; // Max lead time
+        const safetyStock = dailyConsumption * 7; // 1 week safety stock
+        const dynamicPar = Math.ceil(leadTimeDemand + safetyStock);
+        const currentStock = Object.values(item.stock).reduce((a, b) => a + b, 0);
+        const reorderQty = Math.ceil(dailyConsumption * 30 - currentStock);
+
+        return {
+          ...item,
+          dynamicPar,
+          currentStock,
+          reorderQty,
+          monthlyConsumption,
+        };
+      })
+      .filter(item => item.currentStock < item.dynamicPar && item.reorderQty > 0);
+
+    setReorderList(reorderItems);
+    setReportModal({ open: true, title: 'Reorder List', items: reorderItems });
+  };
+
   const showNearExpiryReport = () => {
-    const nearExpiryItems = (inventory || []).filter(item => {
-      if (item.earliestExpiry === '2099-12-31') return false;
-      const expiryDate = new Date(item.earliestExpiry);
-      const diffDays = Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-      return diffDays <= 90;
-    }).sort((a, b) => new Date(a.earliestExpiry).getTime() - new Date(b.earliestExpiry).getTime());
+    const nearExpiryItems = (inventory || []).map(item => {
+      const nearExpiryBatches = (item.batches || []).filter(batch => {
+        if (batch.expiry === '2099-12-31') return false;
+        const expiryDate = new Date(batch.expiry);
+        const diffDays = Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        return diffDays <= 90;
+      });
+
+      if (nearExpiryBatches.length === 0) return null;
+
+      return {
+        ...item,
+        batches: nearExpiryBatches,
+      };
+    }).filter(Boolean).sort((a, b) => new Date(a.earliestExpiry).getTime() - new Date(b.earliestExpiry).getTime());
+
     setReportModal({ open: true, title: 'Near Expiry Audit', items: nearExpiryItems });
   };
 
@@ -631,7 +720,28 @@ const App: React.FC = () => {
     notify("Audit Report Exported");
   };
 
-  const exportReportToCSV = (title: string, items: InventoryItem[]) => {
+  const exportReportToCSV = (title: string, items: any[]) => {
+    if (title === 'Reorder List') {
+      const headers = ['SKU', 'Name', 'Current Stock', 'Dynamic PAR', 'Monthly Consumption', 'Reorder Qty'];
+      const rows = (items || []).map(i => [
+        i.sku, 
+        i.name, 
+        i.currentStock, 
+        i.dynamicPar, 
+        i.monthlyConsumption,
+        i.reorderQty
+      ]);
+      const content = [headers, ...rows].map(r => r.join(',')).join('\n');
+      const blob = new Blob([content], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Sunlight_Reorder_List_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      notify("CSV Exported");
+      return;
+    }
+
     const headers = ['SKU', 'Name', 'Unit Cost', 'Stock', 'Par Stock', 'Expiry'];
     const rows = (items || []).map(i => [
       i.sku, 
@@ -769,6 +879,7 @@ const App: React.FC = () => {
       <header className="bg-[#800000] text-white px-5 shadow-lg flex justify-between items-center h-14 shrink-0 z-50">
         <div className="flex items-center gap-2 shrink-0">
           <button onClick={() => setView('dashboard')} className="active:scale-95 transition-transform"><BrandLogo scale="text-3xl" subScale="text-[5px]" className="items-start" /></button>
+          <button onClick={() => setIsCloudSetupOpen(true)} className="ml-2 text-white/60 hover:text-white"><Settings size={16} /></button>
         </div>
         <div className="flex items-center gap-2 min-w-0">
           <div className="flex items-center gap-1.5 shrink-0">
@@ -826,11 +937,17 @@ const App: React.FC = () => {
                   <div className={`p-2 bg-white rounded-lg text-blue-600 shadow-sm ${isSyncing ? 'animate-spin' : ''}`}><RefreshCw size={14}/></div>
                   <p className="text-[9px] font-black uppercase text-blue-900 leading-tight">Sync Data</p>
                 </button>
+                                <button onClick={generateReorderList} className="flex items-center gap-2.5 p-3 bg-red-50 rounded-xl border border-red-100 active:scale-95 transition-all">
+                  <div className="p-2 bg-white rounded-lg text-red-600 shadow-sm"><ShoppingCart size={14}/></div>
+                  <p className="text-[9px] font-black uppercase text-red-900 leading-tight">Reorder</p>
+                </button>
+
                 <button onClick={showNearExpiryReport} className="flex items-center gap-2.5 p-3 bg-amber-50 rounded-xl border border-amber-100 active:scale-95 transition-all">
                   <div className="p-2 bg-white rounded-lg text-amber-600 shadow-sm"><CalendarClock size={14}/></div>
                   <p className="text-[9px] font-black uppercase text-amber-900 leading-tight">Near Exp</p>
                 </button>
-                <button onClick={() => setIsAuditMode(!isAuditMode)} className={`flex items-center gap-2.5 p-3 rounded-xl border active:scale-95 transition-all ${
+
+                <button onClick={handleToggleAudit} className={`flex items-center gap-2.5 p-3 rounded-xl border active:scale-95 transition-all ${
                   isAuditMode
                     ? 'bg-green-100 border-green-200'
                     : 'bg-gray-50 border-gray-100'
@@ -838,12 +955,14 @@ const App: React.FC = () => {
                   <div className={`p-2 bg-white rounded-lg shadow-sm ${isAuditMode ? 'text-green-600' : 'text-gray-600'}`}><FileText size={14}/></div>
                   <p className={`text-[9px] font-black uppercase leading-tight ${isAuditMode ? 'text-green-900' : 'text-gray-900'}`}>{isAuditMode ? 'Exit Audit' : 'Audit Mode'}</p>
                 </button>
+
                 {isAuditMode && (
-                  <button onClick={handleExportAuditToXLSX} className="flex items-center gap-2.5 p-3 bg-red-50 rounded-xl border border-red-100 active:scale-95 transition-all col-span-2">
-                    <div className="p-2 bg-white rounded-lg text-red-600 shadow-sm"><FileOutput size={14}/></div>
-                    <p className="text-[9px] font-black uppercase text-red-900 leading-tight">Export Excel</p>
+                  <button onClick={handleExportAuditToXLSX} className="flex items-center gap-2.5 p-3 bg-emerald-50 rounded-xl border border-emerald-100 active:scale-95 transition-all col-span-2">
+                    <div className="p-2 bg-white rounded-lg text-emerald-600 shadow-sm"><FileOutput size={14}/></div>
+                    <p className="text-[9px] font-black uppercase text-emerald-900 leading-tight">Export Audit Report</p>
                   </button>
                 )}
+                
                 <button onClick={() => setView('history')} className="flex items-center gap-2.5 p-3 bg-gray-50 rounded-xl border border-gray-100 active:scale-95 transition-all">
                   <div className="p-2 bg-white rounded-lg text-gray-600 shadow-sm"><History size={14}/></div>
                   <p className="text-[9px] font-black uppercase text-gray-900 leading-tight">Logs</p>
@@ -1075,6 +1194,13 @@ const App: React.FC = () => {
                     if(!isStaff) return;
                     setIsSyncing(true);
                     const test = await db.testConnection();
+                      if (test.success) {
+                        setDbStatus({ connected: true });
+                        notify("Connection Successful");
+                      } else {
+                        setDbStatus({ connected: false, error: test.error });
+                        notifyError(`Test Failed: ${test.error}`);
+                      }
                     setIsSyncing(false);
                     if (test.success) {
                       setDbStatus({ connected: true });
@@ -1240,11 +1366,10 @@ const App: React.FC = () => {
               </button>
               <button 
                 onClick={handleCloudConnect}
-                disabled={isLoadingData}
+                disabled={isConnecting}
                 className="bg-blue-600 text-white px-8 py-5 rounded-[1.5rem] font-black uppercase text-[11px] tracking-widest flex items-center gap-3 shadow-xl shadow-blue-500/20 active:scale-95 disabled:opacity-50 transition-all"
               >
-                {isLoadingData ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} strokeWidth={3} />}
-                Connect & Sync
+                {isConnecting ? <><Loader2 className="animate-spin" size={18} /> Connecting...</> : <><RefreshCw size={18} strokeWidth={3} /> Connect & Sync</>}
               </button>
             </div>
           </div>
@@ -1265,16 +1390,44 @@ const App: React.FC = () => {
             
             <div className="flex-1 overflow-y-auto no-scrollbar space-y-2 pb-4">
               {(reportModal.items || []).map(item => (
-                <div key={item.id} className="p-4 bg-gray-50 border rounded-2xl flex justify-between items-center group">
-                  <div>
-                    <p className="text-[11px] font-black text-gray-800 uppercase leading-none mb-1.5">{item.name}</p>
-                    <p className="text-[8px] font-bold text-gray-400 uppercase">
-                      {Object.values(item.stock || {}).reduce((a, b) => (a as number) + (b as number), 0)} / {item.parStock} {item.uom}
-                    </p>
+                <div key={item.id} className="p-4 bg-gray-50 border rounded-2xl flex flex-col gap-3 group">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-[11px] font-black text-gray-800 uppercase leading-none mb-1.5">{item.name}</p>
+                      {reportModal.title === 'Reorder List' && (
+                        <p className="text-[8px] font-bold text-gray-400 uppercase">
+                          {item.currentStock} / {item.dynamicPar} {item.uom} | REORDER: {item.reorderQty}
+                        </p>
+                      )}
+                    </div>
+                    <div className={`text-[10px] font-black ${item.earliestExpiry !== '2099-12-31' ? 'text-amber-600' : 'text-gray-300'}`}>
+                      {item.earliestExpiry === '2099-12-31' ? 'INF' : new Date(item.earliestExpiry).toLocaleDateString()}
+                    </div>
                   </div>
-                  <div className={`text-[10px] font-black ${item.earliestExpiry !== '2099-12-31' ? 'text-amber-600' : 'text-gray-300'}`}>
-                    {item.earliestExpiry === '2099-12-31' ? 'INF' : new Date(item.earliestExpiry).toLocaleDateString()}
-                  </div>
+                  {item.batches && item.batches.filter(b => b.quantity > 0).length > 0 && (
+                    <div className="space-y-1.5 pt-2 border-t border-gray-200/60">
+                      {item.batches
+                        .filter(b => b.quantity > 0)
+                        .sort((a, b) => new Date(a.expiry).getTime() - new Date(b.expiry).getTime())
+                        .map(batch => {
+                          const diffDays = Math.ceil((new Date(batch.expiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                          const isExpiringSoon = batch.expiry !== '2099-12-31' && diffDays <= 90;
+                          const isExpired = batch.expiry !== '2099-12-31' && diffDays <= 0;
+                          
+                          return (
+                            <div key={batch.id} className="flex justify-between items-center">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[9px] font-bold text-gray-500 uppercase">{batch.quantity} {item.uom}</span>
+                                <span className="text-[8px] font-black text-gray-400 uppercase bg-gray-100 px-1.5 py-0.5 rounded-md">{batch.zone.split(' ')[0]}</span>
+                              </div>
+                              <span className={`text-[9px] font-black ${isExpired ? 'text-red-500' : isExpiringSoon ? 'text-amber-600' : 'text-gray-400'}`}>
+                                {batch.expiry === '2099-12-31' ? 'INF' : `${diffDays} day${diffDays === 1 ? '' : 's'}`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
                 </div>
               ))}
               {reportModal.items?.length === 0 && <div className="py-20 text-center text-gray-200 uppercase font-black text-[9px]">No matches found</div>}
@@ -1429,6 +1582,36 @@ const App: React.FC = () => {
       </footer>
 
       {/* Cart Drawer */}
+      {showAuditExitConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertCircle size={32} />
+              </div>
+              <h3 className="text-xl font-black text-gray-900 mb-2">End Audit Session?</h3>
+              <p className="text-sm text-gray-500 font-medium mb-6">
+                This will clear all your entered counts. Make sure you have exported your report if needed.
+              </p>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowAuditExitConfirm(false)}
+                  className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-black uppercase text-[10px] active:scale-95 transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmExitAudit}
+                  className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg shadow-red-600/20 active:scale-95 transition-all"
+                >
+                  End Audit
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isCartOpen && (
         <div className="fixed inset-0 z-[2100] bg-black/40 backdrop-blur-[2px] flex justify-end">
            <div className="bg-white w-full max-w-[340px] h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
@@ -1744,9 +1927,10 @@ const App: React.FC = () => {
       {/* Invisible Receipt for Export */}
       {receiptToExport && (
         <div id={`receipt-${receiptToExport.id}`} style={{ display: 'none', padding: '40px', background: 'white', width: '600px', fontFamily: 'Montserrat' }}>
-          <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-            <h1 style={{ color: '#800000', margin: '0', fontSize: '32px' }}>SUNLIGHT</h1>
-            <p style={{ margin: '0', fontSize: '10px', letterSpacing: '4px', color: '#666' }}>WAREHOUSE RELEASE</p>
+                    <div style={{ position: 'relative', textAlign: 'center', marginBottom: '40px', backgroundColor: '#800000', padding: '20px', color: '#FFFF00' }}>
+            <h1 style={{ fontFamily: 'Great Vibes, cursive', fontWeight: 'normal', fontSize: '55px', margin: '0' }}>Sunlight</h1>
+            <p style={{ marginTop: '-8px', fontSize: '10px', letterSpacing: '4px', fontFamily: 'Inter, sans-serif' }}>HOTEL, CORON</p>
+            <p style={{ position: 'absolute', bottom: '10px', right: '20px', fontSize: '10px', letterSpacing: '2px', fontFamily: 'Inter, sans-serif', color: '#FFFF00' }}>Warehouse Release Receipt</p>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '30px' }}>
             <div>

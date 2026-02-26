@@ -477,5 +477,30 @@ export const db = {
       console.error("Error saving admin password:", e);
       throw e;
     }
+  },
+
+  async saveAuditState(state: { isAuditMode: boolean; isAuditPaused: boolean; auditTimer: number; auditCounts: Record<string, number> }): Promise<void> {
+    try {
+      await client.execute({
+        sql: "INSERT OR REPLACE INTO config (key, value_json) VALUES (?, ?)",
+        args: ["audit_state", JSON.stringify(state)]
+      });
+    } catch (e: unknown) {
+      console.error("Error saving audit state:", e);
+      throw e;
+    }
+  },
+
+  async getAuditState(): Promise<{ isAuditMode: boolean; isAuditPaused: boolean; auditTimer: number; auditCounts: Record<string, number> } | null> {
+    try {
+      const res = await client.execute({
+        sql: "SELECT value_json FROM config WHERE key = ?",
+        args: ["audit_state"]
+      });
+      return res.rows.length > 0 ? JSON.parse(String(res.rows[0].value_json)) : null;
+    } catch (e: unknown) {
+      console.error("Error fetching audit state:", e);
+      return null;
+    }
   }
 };
