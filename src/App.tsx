@@ -3,9 +3,7 @@ import {
   InventoryItem, Transaction, User, CartItem, StockBatch, Zone, PendingIssue
 } from './types';
 import React, { useState, useEffect, useMemo } from 'react';
-
-import * as htmlToImage from 'html-to-image';
-import { jsPDF } from 'jspdf';
+import domtoimage from 'dom-to-image';
 
 import * as XLSX from 'xlsx';
 import { 
@@ -18,6 +16,8 @@ import {
 import { StatCard } from './components/StatCard';
 import { ItemCard } from './components/ItemCard';
 import { SignaturePad } from './components/SignaturePad';
+import { ExportControls } from './components/ExportControls';
+import { useStore } from './store/useStore';
 import { db } from './db';
 
 
@@ -48,16 +48,21 @@ const BrandLogo = ({ className = "", color = BRAND_YELLOW, scale = "text-5xl", s
 
 const App: React.FC = () => {
   // App States
-  const [appInit, setAppInit] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [dbStatus, setDbStatus] = useState<{ connected: boolean; error?: string }>({ connected: false });
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [pendingIssues, setPendingIssues] = useState<PendingIssue[]>([]);
-  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
-  const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
-  const [availableZones, setAvailableZones] = useState<string[]>([]);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const {
+    appInit,
+    isSyncing,
+    dbStatus,
+    inventory,
+    transactions,
+    pendingIssues,
+    availableCategories,
+    availableDepartments,
+    availableZones,
+    currentUser, setCurrentUser,
+    cart, setCart,
+    activeExternalRequestId, setActiveExternalRequestId,
+    loadAppData
+  } = useStore();
   const [view, setView] = useState<'dashboard' | 'inventory' | 'pending' | 'history' | 'settings'>('dashboard');
 
 
@@ -68,10 +73,9 @@ const App: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>(GLOBAL_CATEGORY_KEY);
   const [searchTerm, setSearchTerm] = useState('');
   const [logDeptFilter, setLogDeptFilter] = useState('All');
-  const [historyTab, setHistoryTab] = useState<'logs' | 'receipts'>('logs');
   const [showAddSuccess, setShowAddSuccess] = useState<string | null>(null);
   const [showError, setShowError] = useState<string | null>(null);
-  const [cart, setCart] = useState<CartItem[]>([]);
+
   
   // Modals
   const [isAddingItem, setIsAddingItem] = useState(false);
@@ -85,22 +89,18 @@ const App: React.FC = () => {
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
   const [pendingUser, setPendingUser] = useState<User | null>(null);
-  const [reportModal, setReportModal] = useState<{ open: boolean, title: string, items: (InventoryItem & Record<string, unknown>)[] }>({ open: false, title: '', items: [] });
+  const [reportModal, setReportModal] = useState<{ open: boolean, title: string, items: InventoryItem[] }>({ open: false, title: '', items: [] });
   const [isCloudSetupOpen, setIsCloudSetupOpen] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isRequestPickerOpen, setIsRequestPickerOpen] = useState(false);
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
   const [externalRequests, setExternalRequests] = useState<PendingIssue[]>([]);
-  const [releasedIssues, setReleasedIssues] = useState<PendingIssue[]>([]);
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [exportStartDate, setExportStartDate] = useState('');
-  const [exportEndDate, setExportEndDate] = useState('');
   
   // Turso Config State
   const [tursoUrl, setTursoUrl] = useState(localStorage.getItem('TURSO_URL') || process.env.VITE_TURSO_URL);
   const [tursoToken, setTursoToken] = useState(localStorage.getItem('TURSO_TOKEN') || process.env.VITE_TURSO_TOKEN);
 
-  const [activeExternalRequestId, setActiveExternalRequestId] = useState<string | null>(null);
+
   
   // Audit Mode
   const [isAuditMode, setIsAuditMode] = useState(() => localStorage.getItem('isAuditMode') === 'true');
@@ -152,50 +152,7 @@ const App: React.FC = () => {
     setTimeout(() => setShowError(null), 4000);
   };
 
-  const loadAppData = async (silent = false) => {
-    try {
-      if (!silent) setIsSyncing(true);
-      if (!appInit) {
-        // App initialization logic
-      }
 
-      const isInitialized = await db.initialize();
-      if (!isInitialized) {
-        throw new Error("Failed to initialize database connection.");
-      }
-
-      const [inv, txs, pi, extReqs, cfg, relIssues] = await Promise.all([
-        db.getInventory(), 
-        db.getTransactions(), 
-        db.getPendingIssues(), 
-        db.getExternalRequests(),
-        db.getConfig(),
-        db.getReleasedIssues()
-      ]);
-      
-      setInventory((inv as InventoryItem[]).map(item => ({ ...item, initialParStock: item.initialParStock || item.parStock })));
-      setTransactions(txs as Transaction[]);
-      setPendingIssues(pi as PendingIssue[]);
-      setExternalRequests(extReqs as PendingIssue[]);
-      setReleasedIssues(relIssues as PendingIssue[]);
-      setAvailableCategories(cfg?.categories || []);
-      setAvailableDepartments(cfg?.departments || []);
-      setAvailableZones(cfg?.zones || []);
-      
-      setDbStatus({ connected: true });
-      if (!silent && appInit) notify("Cloud Data Synced");
-    } catch (err: unknown) {
-      console.error("Failed to sync data:", err);
-      setDbStatus({ connected: false, error: (err as Error).message });
-      notifyError(`Sync Error: ${(err as Error).message || 'Database connection failed'}`);
-      if (!appInit) {
-        setIsCloudSetupOpen(true);
-      }
-    } finally {
-      setIsSyncing(false);
-      setAppInit(true);
-    }
-  };
 
   const handleToggleAudit = () => {
     if (isAuditMode) {
@@ -321,55 +278,26 @@ const App: React.FC = () => {
   };
 
   const exportReceiptAsImage = async (req: PendingIssue) => {
-    setReceiptToExport(req);
-    // Wait for React to render the component
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
     const el = document.getElementById(`receipt-${req.id}`);
-    if (!el) {
-      notifyError("Export failed: Receipt preview not found");
-      setReceiptToExport(null);
-      return;
-    }
-    
+    if (!el) return;
+    el.style.display = 'block';
     try {
-      // Ensure element is visible but off-screen for capture
-      el.style.display = 'block';
-      el.style.position = 'absolute'; // Changed to absolute
-      el.style.left = '0';
-      el.style.top = '0';
-      el.style.zIndex = '-1';
-      el.style.visibility = 'visible';
-      el.style.opacity = '1';
-      
-      const dataUrl = await htmlToImage.toPng(el, {
-        backgroundColor: '#ffffff',
-        width: el.offsetWidth, // Use offsetWidth for accurate width
-        height: el.offsetHeight, // Use offsetHeight for accurate height
-        pixelRatio: 2,
-        cacheBust: true,
-        skipFonts: false,
+      const dataUrl = await domtoimage.toPng(el, { 
+        bgcolor: '#ffffff',
+        width: 600,
+        height: el.offsetHeight,
         style: {
-          margin: '0',
-          padding: '0',
-          border: 'none',
-          outline: 'none',
-          boxShadow: 'none',
-          visibility: 'visible',
-          display: 'flex'
+          display: 'block'
         }
       });
-      
+      el.style.display = 'none';
       const link = document.createElement('a');
       link.download = `Sunlight_Receipt_${req.id}.png`;
       link.href = dataUrl;
       link.click();
-      notify("Receipt Exported");
     } catch (error) {
       console.error('Error generating receipt:', error);
-      notifyError("Failed to generate receipt image");
-    } finally {
-      setReceiptToExport(null);
+      el.style.display = 'none';
     }
   };
 
@@ -449,18 +377,19 @@ const App: React.FC = () => {
       setInventory([...updatedInventory]);
       setTransactions(prev => [...newTransactions, ...(prev || [])]);
       setPendingIssues([...remainingPending]);
-      setReleasedIssues(prev => [finalizedReq, ...(prev || [])]);
       
       setIsFinalizingIssue(false);
       setCart([]);
       setActiveExternalRequestId(null);
       
-      // Use the improved async export function
-      exportReceiptAsImage(finalizedReq).then(() => {
+      setReceiptToExport(finalizedReq);
+      setTimeout(() => {
+        exportReceiptAsImage(finalizedReq);
+        setReceiptToExport(null);
         setActiveRequestToFinalize(null);
         setReceiverName('');
         setSignature(null);
-      });
+      }, 500);
 
       notify(`Released & Receipt Generated`);
     } catch (e: unknown) {
@@ -652,6 +581,7 @@ const App: React.FC = () => {
       })
       .filter(item => item.currentStock < item.dynamicPar && item.reorderQty > 0);
 
+    setReorderList(reorderItems);
     setReportModal({ open: true, title: 'Reorder List', items: reorderItems });
   };
 
@@ -745,17 +675,16 @@ const App: React.FC = () => {
     notify("Audit Report Exported");
   };
 
-  const exportReportToCSV = (title: string, items: (InventoryItem & Record<string, unknown>)[] | null) => {
-    if (!items) return;
+  const exportReportToCSV = (title: string, items: InventoryItem[]) => {
     if (title === 'Reorder List') {
       const headers = ['SKU', 'Name', 'Current Stock', 'Dynamic PAR', 'Monthly Consumption', 'Reorder Qty'];
       const rows = (items || []).map(i => [
         i.sku, 
         i.name, 
-        i.currentStock as number, 
-        i.dynamicPar as number, 
-        i.monthlyConsumption as number,
-        i.reorderQty as number
+        i.currentStock, 
+        i.dynamicPar, 
+        i.monthlyConsumption,
+        i.reorderQty
       ]);
       const content = [headers, ...rows].map(r => r.join(',')).join('\n');
       const blob = new Blob([content], { type: 'text/csv' });
@@ -785,146 +714,6 @@ const App: React.FC = () => {
     a.download = `Sunlight_${title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     notify("CSV Exported");
-  };
-
-  const handleExportReceipts = async () => {
-    if (!exportStartDate || !exportEndDate) {
-      notifyError("Please select date range");
-      return;
-    }
-
-    setIsSyncing(true);
-    try {
-      const start = new Date(exportStartDate);
-      const end = new Date(exportEndDate);
-      end.setHours(23, 59, 59, 999);
-
-      // Fetch actual released receipts from the database
-      const receipts = await db.getReleasedIssues(start.toISOString(), end.toISOString());
-
-      if (receipts.length === 0) {
-        notifyError("No receipts found in this range");
-        return;
-      }
-
-      const headers = ['Receipt Date', 'Receipt ID', 'Department', 'Receiver', 'Item Name', 'SKU', 'Quantity', 'UOM', 'Issued By', 'Signature Status'];
-      const rows: (string | number)[][] = [];
-
-      receipts.forEach(receipt => {
-        receipt.items.forEach(item => {
-          rows.push([
-            new Date(receipt.timestamp).toLocaleString(),
-            receipt.id,
-            receipt.department,
-            receipt.receiverName || 'N/A',
-            item.name,
-            item.sku,
-            item.quantity,
-            item.uom,
-            receipt.user,
-            receipt.signature ? 'Signed' : 'No Signature'
-          ]);
-        });
-      });
-
-      const content = [headers, ...rows].map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-      const blob = new Blob([content], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Sunlight_Full_Receipts_${exportStartDate}_to_${exportEndDate}.csv`;
-      a.click();
-      setIsExportModalOpen(false);
-      notify("Full Receipts Exported");
-    } catch (error) {
-      console.error("Export failed:", error);
-      notifyError("Failed to export receipts");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const handleExportVisualReceipts = async () => {
-    if (!exportStartDate || !exportEndDate) {
-      notifyError("Please select date range");
-      return;
-    }
-
-    setIsSyncing(true);
-    try {
-      const start = new Date(exportStartDate);
-      const end = new Date(exportEndDate);
-      end.setHours(23, 59, 59, 999);
-
-      const receipts = await db.getReleasedIssues(start.toISOString(), end.toISOString());
-
-      if (receipts.length === 0) {
-        notifyError("No receipts found in this range");
-        return;
-      }
-
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      
-      notify(`Preparing ${receipts.length} receipts...`);
-
-      for (let i = 0; i < receipts.length; i++) {
-        const receipt = receipts[i];
-        setReceiptToExport(receipt);
-        
-        // Wait for React to render the hidden div
-        await new Promise(resolve => setTimeout(resolve, 400));
-
-        const element = document.getElementById(`receipt-${receipt.id}`);
-        if (element) {
-          // Temporarily show it for capture
-          element.style.display = 'block';
-          element.style.position = 'absolute'; // Changed to absolute
-          element.style.left = '0';
-          element.style.top = '0';
-          element.style.zIndex = '-1';
-          element.style.visibility = 'visible';
-          
-          const dataUrl = await htmlToImage.toPng(element, {
-            backgroundColor: '#ffffff',
-            width: element.scrollWidth, // Use scrollWidth for accurate width
-            height: element.scrollHeight, // Use scrollHeight for accurate height
-            pixelRatio: 2,
-            cacheBust: true,
-            style: {
-              margin: '0',
-              padding: '0',
-              border: 'none',
-              outline: 'none',
-              boxShadow: 'none',
-              visibility: 'visible',
-              display: 'flex'
-            }
-          });
-          
-          element.style.display = 'none';
-
-          if (i > 0) pdf.addPage();
-          
-          // Calculate dimensions to fit A4
-          const imgProps = pdf.getImageProperties(dataUrl);
-          const pdfWidth = pageWidth - 20; // 10mm margins
-          const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-          
-          pdf.addImage(dataUrl, 'PNG', 10, 10, pdfWidth, pdfHeight);
-        }
-      }
-
-      pdf.save(`Sunlight_Visual_Receipts_${exportStartDate}_to_${exportEndDate}.pdf`);
-      setReceiptToExport(null);
-      setIsExportModalOpen(false);
-      notify("Visual PDF Exported");
-    } catch (error) {
-      console.error("Visual export failed:", error);
-      notifyError("Failed to export visual receipts");
-    } finally {
-      setIsSyncing(false);
-    }
   };
 
   const stockValue = useMemo(() => {
@@ -1251,101 +1040,48 @@ const App: React.FC = () => {
 
         {view === 'history' && (
           <div className="space-y-3 animate-in slide-in-from-right-4 duration-300">
+             <ExportControls />
              <div className="flex justify-between items-center mb-1 pt-2">
                 <h3 className="text-sm font-black uppercase tracking-widest text-[#800000]">Activity Logs</h3>
-                <div className="flex gap-2">
-                  <div className="flex bg-gray-100 p-1 rounded-xl">
-                    <button 
-                      onClick={() => setHistoryTab('logs')}
-                      className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase transition-all ${historyTab === 'logs' ? 'bg-white text-[#800000] shadow-sm' : 'text-gray-400'}`}
-                    >
-                      Logs
-                    </button>
-                    <button 
-                      onClick={() => setHistoryTab('receipts')}
-                      className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase transition-all ${historyTab === 'receipts' ? 'bg-white text-[#800000] shadow-sm' : 'text-gray-400'}`}
-                    >
-                      Receipts
-                    </button>
-                  </div>
-                  <select 
-                    value={logDeptFilter} 
-                    onChange={e => setLogDeptFilter(e.target.value)}
-                    className="bg-white border rounded-xl px-2 py-2 text-[9px] font-black uppercase outline-none focus:border-[#800000]"
-                  >
-                    <option value="All">All Departments</option>
-                    {(availableDepartments || []).map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                </div>
+                <select 
+                  value={logDeptFilter} 
+                  onChange={e => setLogDeptFilter(e.target.value)}
+                  className="bg-white border rounded-xl px-2 py-2 text-[9px] font-black uppercase outline-none focus:border-[#800000]"
+                >
+                  <option value="All">All Departments</option>
+                  {(availableDepartments || []).map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
              </div>
-
-             {historyTab === 'logs' ? (
-               <div className="bg-white border rounded-2xl overflow-hidden shadow-sm border-gray-100">
-                  <table className="w-full text-left text-[10px]">
-                    <thead className="bg-gray-50 text-[8px] font-black uppercase tracking-widest text-gray-400 border-b">
-                      <tr>
-                        <th className="px-4 py-3">Transaction</th>
-                        <th className="px-3 py-3 text-right">Qty</th>
+             <div className="bg-white border rounded-2xl overflow-hidden shadow-sm border-gray-100">
+                <table className="w-full text-left text-[10px]">
+                  <thead className="bg-gray-50 text-[8px] font-black uppercase tracking-widest text-gray-400 border-b">
+                    <tr>
+                      <th className="px-4 py-3">Transaction</th>
+                      <th className="px-3 py-3 text-right">Qty</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {(filteredLogs || []).map(t => (
+                      <tr key={t.id} className="active:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col">
+                             <p className="font-black text-gray-900 truncate max-w-[150px] uppercase">{t.itemName}</p>
+                             <p className="text-[7px] font-bold text-gray-300 uppercase tracking-tighter">
+                               {t.action} • {t.department?.slice(0, 10) || 'Warehouse'} • {new Date(t.timestamp).toLocaleDateString()}
+                             </p>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-right font-black text-[#800000]">
+                          {t.action === 'RECEIVE' ? '+' : '-'}{t.qty}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {(filteredLogs || []).map(t => (
-                        <tr key={t.id} className="active:bg-gray-50">
-                          <td className="px-4 py-3">
-                            <div className="flex flex-col">
-                               <p className="font-black text-gray-900 truncate max-w-[150px] uppercase">{t.itemName}</p>
-                               <p className="text-[7px] font-bold text-gray-300 uppercase tracking-tighter">
-                                 {t.action} • {t.department?.slice(0, 10) || 'Warehouse'} • {new Date(t.timestamp).toLocaleDateString()}
-                               </p>
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 text-right font-black text-[#800000]">
-                            {t.action === 'RECEIVE' ? '+' : '-'}{t.qty}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {filteredLogs?.length === 0 && <div className="py-20 text-center text-gray-200 uppercase font-black text-[9px]">No records found</div>}
-               </div>
-             ) : (
-               <div className="space-y-3">
-                 {(releasedIssues || [])
-                   .filter(r => logDeptFilter === 'All' || r.department === logDeptFilter)
-                   .map(receipt => (
-                     <div key={receipt.id} className="bg-white border rounded-2xl p-4 shadow-sm border-gray-100 flex justify-between items-center group">
-                       <div>
-                         <div className="flex items-center gap-2 mb-1">
-                           <span className="text-[8px] font-black text-gray-300 uppercase tracking-widest">{receipt.id}</span>
-                           {receipt.signature && <Shield size={10} className="text-green-500" />}
-                         </div>
-                         <h4 className="text-[11px] font-black text-gray-900 uppercase leading-none mb-1">{receipt.department}</h4>
-                         <p className="text-[8px] font-bold text-gray-400 uppercase">
-                           {receipt.receiverName || 'N/A'} • {receipt.items.length} items • {new Date(receipt.timestamp).toLocaleDateString()}
-                         </p>
-                       </div>
-                       <div className="flex gap-2">
-                         <button 
-                           onClick={() => exportReceiptAsImage(receipt)}
-                           className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:text-[#800000] active:scale-95 transition-all"
-                           title="Export Receipt Image"
-                         >
-                           <FileOutput size={16} />
-                         </button>
-                       </div>
-                     </div>
-                   ))}
-                 {(releasedIssues || []).filter(r => logDeptFilter === 'All' || r.department === logDeptFilter).length === 0 && (
-                   <div className="py-20 text-center text-gray-200 uppercase font-black text-[9px]">No receipts found</div>
-                 )}
-               </div>
-             )}
-
+                    ))}
+                  </tbody>
+                </table>
+                {filteredLogs?.length === 0 && <div className="py-20 text-center text-gray-200 uppercase font-black text-[9px]">No records found</div>}
+             </div>
              {isStaff && (transactions?.length || 0) > 0 && (
-                <div className="flex gap-2">
-                  <button onClick={handleClearHistory} className="flex-1 py-3 border border-red-50 text-red-300 rounded-xl text-[9px] font-black uppercase tracking-widest active:bg-red-50 transition-colors">Wipe System Logs</button>
-                  <button onClick={() => setIsExportModalOpen(true)} className="flex-1 py-3 border border-blue-50 text-blue-300 rounded-xl text-[9px] font-black uppercase tracking-widest active:bg-blue-50 transition-colors">Export Receipts</button>
-                </div>
+                <button onClick={handleClearHistory} className="w-full py-3 border border-red-50 text-red-300 rounded-xl text-[9px] font-black uppercase tracking-widest active:bg-red-50 transition-colors">Wipe System Logs</button>
              )}
           </div>
         )}
@@ -1459,23 +1195,6 @@ const App: React.FC = () => {
                   className="w-full py-4 bg-gray-50 rounded-2xl border border-gray-100 text-[9px] font-black uppercase text-[#800000] active:bg-red-50 transition-all font-black"
                 >
                   Change Shared Staff Password
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-[1.5rem] border shadow-sm p-6 space-y-4 border-gray-100">
-              <div className="flex items-center justify-between border-b pb-2">
-                <div className="flex items-center gap-2">
-                  <FileOutput size={16} className="text-[#800000]" />
-                  <h4 className="text-[9px] font-black uppercase tracking-widest text-gray-400">Data Export</h4>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <button 
-                  onClick={() => setIsExportModalOpen(true)}
-                  className="w-full py-4 bg-gray-50 rounded-2xl border border-gray-100 text-[9px] font-black uppercase text-blue-600 active:bg-blue-50 transition-all font-black flex items-center justify-center gap-2"
-                >
-                  <FileOutput size={14} /> Export Issue Receipts (CSV)
                 </button>
               </div>
             </div>
@@ -1677,40 +1396,6 @@ const App: React.FC = () => {
                 className="flex-1 py-4 bg-[#800000] text-white rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all disabled:opacity-20"
               >
                 <FileOutput size={16} /> Export to CSV
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Export Receipts Modal */}
-      {isExportModalOpen && (
-        <div className="fixed inset-0 z-[2500] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-sm font-black uppercase tracking-widest text-[#800000]">Export Receipts</h3>
-              <button onClick={() => setIsExportModalOpen(false)} className="text-gray-300"><X size={24}/></button>
-            </div>
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 ml-1">Start Date</label>
-                <input type="date" value={exportStartDate} onChange={e => setExportStartDate(e.target.value)} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-[#800000] font-bold text-sm" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 ml-1">End Date</label>
-                <input type="date" value={exportEndDate} onChange={e => setExportEndDate(e.target.value)} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-[#800000] font-bold text-sm" />
-              </div>
-              <button 
-                onClick={handleExportReceipts}
-                className="w-full py-4 bg-gray-100 text-gray-700 rounded-xl font-black uppercase text-[10px] tracking-widest active:scale-95 transition-all mt-4"
-              >
-                Generate CSV Report
-              </button>
-              <button 
-                onClick={handleExportVisualReceipts}
-                className="w-full py-4 bg-[#800000] text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg active:scale-95 transition-all"
-              >
-                Generate Visual PDF
               </button>
             </div>
           </div>
@@ -2197,102 +1882,43 @@ const App: React.FC = () => {
 
       {/* Invisible Receipt for Export */}
       {receiptToExport && (
-        <div id={`receipt-${receiptToExport.id}`} style={{ 
-          position: 'fixed', 
-          left: '-9999px', 
-          top: '0', 
-          background: 'white', 
-          width: '600px', 
-          fontFamily: 'Montserrat, sans-serif', 
-          zIndex: -1,
-          boxSizing: 'border-box',
-          minHeight: '800px',
-          display: 'flex',
-          flexDirection: 'column',
-          border: 'none',
-          outline: 'none',
-          boxShadow: 'none',
-          margin: 0,
-          color: '#000',
-          overflow: 'hidden' /* Ensure no overflow */
-        }}>
-          <div style={{ padding: '60px 40px', width: '100%', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
-            {/* Header */}
-          <div style={{ 
-            backgroundColor: '#800000', 
-            padding: '40px 20px 20px 20px', 
-            color: '#FFFF00', 
-            textAlign: 'center', 
-            marginBottom: '50px',
-            position: 'relative',
-            border: 'none',
-            outline: 'none',
-            boxShadow: 'none',
-            width: '100%',
-            boxSizing: 'border-box',
-            margin: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center'
-          }}>
-            <h1 style={{ fontFamily: 'Great Vibes, cursive', fontWeight: 'normal', fontSize: '72px', margin: '0', lineHeight: '1', border: 'none', outline: 'none', boxShadow: 'none', color: '#FFFF00' }}>Sunlight</h1>
-            <p style={{ margin: '5px 0 0 0', fontSize: '12px', letterSpacing: '5px', fontWeight: 'bold', textTransform: 'uppercase', border: 'none', outline: 'none', boxShadow: 'none', color: '#FFFF00' }}>Hotel, Coron</p>
-            <div style={{ width: '100%', textAlign: 'right', marginTop: '30px' }}>
-              <p style={{ 
-                fontSize: '11px', 
-                letterSpacing: '1px', 
-                margin: '0',
-                fontWeight: 'bold',
-                border: 'none',
-                outline: 'none',
-                boxShadow: 'none',
-                color: '#FFFF00'
-              }}>Warehouse Release Receipt</p>
+        <div id={`receipt-${receiptToExport.id}`} style={{ display: 'none', padding: '40px', background: 'white', width: '600px', fontFamily: 'Montserrat' }}>
+                    <div style={{ position: 'relative', textAlign: 'center', marginBottom: '40px', backgroundColor: '#800000', padding: '20px', color: '#FFFF00' }}>
+            <h1 style={{ fontFamily: 'Great Vibes, cursive', fontWeight: 'normal', fontSize: '55px', margin: '0' }}>Sunlight</h1>
+            <p style={{ marginTop: '-8px', fontSize: '10px', letterSpacing: '4px', fontFamily: 'Inter, sans-serif' }}>HOTEL, CORON</p>
+            <p style={{ position: 'absolute', bottom: '10px', right: '20px', fontSize: '10px', letterSpacing: '2px', fontFamily: 'Inter, sans-serif', color: '#FFFF00' }}>Warehouse Release Receipt</p>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '30px' }}>
+            <div>
+              <p style={{ margin: '0', fontSize: '10px', fontWeight: 'bold' }}>RELEASED TO:</p>
+              <p style={{ margin: '0', fontSize: '14px' }}>{receiptToExport.receiverName}</p>
+              <p style={{ margin: '0', fontSize: '12px', color: '#666' }}>{receiptToExport.department}</p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ margin: '0', fontSize: '10px', fontWeight: 'bold' }}>ID:</p>
+              <p style={{ margin: '0', fontSize: '12px' }}>{receiptToExport.id}</p>
+              <p style={{ margin: '0', fontSize: '10px' }}>{new Date(receiptToExport.timestamp).toLocaleString()}</p>
             </div>
           </div>
-
-          {/* Info Section */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '50px', border: 'none', outline: 'none', boxShadow: 'none', width: '100%' }}>
-            <div style={{ flex: 1, border: 'none', outline: 'none', boxShadow: 'none' }}>
-              <p style={{ margin: '0 0 8px 0', fontSize: '11px', fontWeight: '900', color: '#000', letterSpacing: '0.5px', border: 'none', outline: 'none', boxShadow: 'none' }}>RELEASED TO:</p>
-              <p style={{ margin: '0', fontSize: '20px', fontWeight: '700', color: '#000', textTransform: 'uppercase', border: 'none', outline: 'none', boxShadow: 'none' }}>{receiptToExport.receiverName}</p>
-              <p style={{ margin: '6px 0 0 0', fontSize: '14px', color: '#666', fontWeight: '500', border: 'none', outline: 'none', boxShadow: 'none' }}>{receiptToExport.department}</p>
-            </div>
-            <div style={{ textAlign: 'right', border: 'none', outline: 'none', boxShadow: 'none' }}>
-              <p style={{ margin: '0 0 8px 0', fontSize: '11px', fontWeight: '900', color: '#000', letterSpacing: '0.5px', border: 'none', outline: 'none', boxShadow: 'none' }}>ID:</p>
-              <p style={{ margin: '0', fontSize: '16px', fontWeight: '700', color: '#000', border: 'none', outline: 'none', boxShadow: 'none' }}>{receiptToExport.id}</p>
-              <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#999', fontWeight: '500', border: 'none', outline: 'none', boxShadow: 'none' }}>{new Date(receiptToExport.timestamp).toLocaleString()}</p>
-            </div>
-          </div>
-
-          {/* Div-based Table for better capture */}
-          <div style={{ flex: 1, border: 'none', outline: 'none', boxShadow: 'none', width: '100%' }}>
-            {/* Table Header */}
-            <div style={{ display: 'flex', borderBottom: '2px solid #000', paddingBottom: '12px', marginBottom: '5px', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>
-              <div style={{ flex: 1, fontSize: '12px', fontWeight: '900', color: '#000', letterSpacing: '1px' }}>ITEM</div>
-              <div style={{ width: '100px', textAlign: 'right', fontSize: '12px', fontWeight: '900', color: '#000', letterSpacing: '1px' }}>QTY</div>
-            </div>
-            {/* Table Body */}
-            {receiptToExport.items.map((it, idx) => (
-              <div key={idx} style={{ display: 'flex', borderBottom: '1px solid #eee', padding: '15px 0', borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>
-                <div style={{ flex: 1, fontSize: '14px', color: '#333', fontWeight: '500' }}>{it.name}</div>
-                <div style={{ width: '100px', textAlign: 'right', fontSize: '14px', fontWeight: '700', color: '#000' }}>{it.quantity} {it.uom}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Signature */}
-          <div style={{ textAlign: 'center', width: '350px', margin: '0 auto 60px auto', border: 'none', outline: 'none', boxShadow: 'none' }}>
-            <div style={{ minHeight: '100px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', borderBottom: '1px solid #000', paddingBottom: '10px', borderLeft: 'none', borderRight: 'none', borderTop: 'none', outline: 'none', boxShadow: 'none' }}>
-              {receiptToExport.signature && <img src={receiptToExport.signature} alt="sig" crossOrigin="anonymous" style={{ maxHeight: '100px', maxWidth: '100%', border: 'none', outline: 'none', boxShadow: 'none' }} />}
-            </div>
-            <p style={{ fontSize: '11px', fontWeight: '700', marginTop: '15px', color: '#666', letterSpacing: '1px', textTransform: 'uppercase', border: 'none', outline: 'none', boxShadow: 'none' }}>Authorization Signature</p>
-          </div>
-
-          {/* Footer Marking */}
-          <div style={{ marginTop: 'auto', border: 'none', outline: 'none', boxShadow: 'none' }}>
-            <p style={{ fontSize: '10px', fontWeight: 'bold', color: '#999', margin: 0, textTransform: 'uppercase', border: 'none', outline: 'none', boxShadow: 'none' }}>WH copy</p>
-          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '40px' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #eee' }}>
+                <th style={{ textAlign: 'left', padding: '10px 0', fontSize: '10px' }}>ITEM</th>
+                <th style={{ textAlign: 'right', padding: '10px 0', fontSize: '10px' }}>QTY</th>
+              </tr>
+            </thead>
+            <tbody>
+              {receiptToExport.items.map((it, idx) => (
+                <tr key={idx} style={{ borderBottom: '1px solid #f9f9f9' }}>
+                  <td style={{ padding: '10px 0', fontSize: '12px' }}>{it.name}</td>
+                  <td style={{ padding: '10px 0', textAlign: 'right', fontSize: '12px', fontWeight: 'bold' }}>{it.quantity} {it.uom}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ marginTop: '60px', textAlign: 'center' }}>
+            {receiptToExport.signature && <img src={receiptToExport.signature} alt="sig" style={{ maxHeight: '80px', borderBottom: '1px solid #000' }} />}
+            <p style={{ fontSize: '10px', marginTop: '10px' }}>AUTHORIZATION SIGNATURE</p>
           </div>
         </div>
       )}

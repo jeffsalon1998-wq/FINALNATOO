@@ -84,14 +84,14 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, selectedZone, onIssue,
         
         <div className="flex items-center gap-3 shrink-0">
           <div className="flex flex-col items-end">
-            {isExpiringSoon && (
-              <div className="bg-amber-400 text-[#800000] px-2 py-1 rounded-lg text-[9px] font-black shadow-sm uppercase">
-                {diffDays}D
+            {item.unitCost > 0 && (
+              <div className="text-gray-900 px-2 py-1 text-[11px] font-black uppercase">
+                ₱{item.unitCost.toFixed(2)}
               </div>
             )}
-            {!isExpiringSoon && isBelowPar && (
+            {(isExpiringSoon || isBelowPar) && (
               <div className="bg-amber-400 text-[#800000] px-2 py-1 rounded-lg text-[9px] font-black shadow-sm uppercase">
-                LOW
+                {isExpiringSoon ? `${diffDays}D` : 'LOW'}
               </div>
             )}
           </div>

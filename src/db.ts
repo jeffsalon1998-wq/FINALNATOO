@@ -155,9 +155,21 @@ class Database {
     await this.client.execute("DELETE FROM inventory WHERE id = ?", [id]);
   }
 
-  public async getTransactions(): Promise<Transaction[]> {
+  public async getTransactions(startDate?: Date, endDate?: Date): Promise<Transaction[]> {
     if (!this.client) throw new Error("Database not initialized.");
-    const rs = await this.client.execute("SELECT * FROM transactions ORDER BY timestamp DESC");
+
+    let query = "SELECT * FROM transactions";
+    const params: (string | number)[] = [];
+
+    if (startDate && endDate) {
+      query += " WHERE timestamp BETWEEN ? AND ?";
+      params.push(startDate.getTime(), endDate.getTime());
+    }
+
+    query += " ORDER BY timestamp DESC";
+
+    const rs = await this.client.execute({ sql: query, args: params });
+
     return rs.rows.map(row => ({
       id: row.id as string,
       timestamp: row.timestamp as number,
@@ -295,7 +307,6 @@ class Database {
       ]
     );
   }
-}
 
   public async setCredentials(url: string, token: string): Promise<boolean> {
     this.tursoUrl = url;

@@ -9,6 +9,8 @@ interface AppState {
   dbStatus: { connected: boolean; error?: string };
   inventory: InventoryItem[];
   transactions: Transaction[];
+  startDate: Date | null;
+  endDate: Date | null;
   pendingIssues: PendingIssue[];
   externalRequests: PendingIssue[];
   availableCategories: string[];
@@ -25,6 +27,8 @@ interface AppState {
   setDbStatus: (status: { connected: boolean; error?: string }) => void;
   setInventory: (inventory: InventoryItem[]) => void;
   setTransactions: (transactions: Transaction[]) => void;
+  setStartDate: (date: Date | null) => void;
+  setEndDate: (date: Date | null) => void;
   setPendingIssues: (issues: PendingIssue[]) => void;
   setExternalRequests: (requests: PendingIssue[]) => void;
   setAvailableCategories: (categories: string[]) => void;
@@ -34,7 +38,7 @@ interface AppState {
   setCart: (cart: CartItem[] | ((prev: CartItem[]) => CartItem[])) => void;
   setActiveExternalRequestId: (id: string | null) => void;
   
-  loadAppData: (silent?: boolean, onSuccess?: (msg: string) => void, onError?: (msg: string) => void) => Promise<void>;
+  loadAppData: (silent?: boolean, onSuccess?: (msg: string) => void, onError?: (msg: string) => void, startDate?: Date, endDate?: Date) => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -44,6 +48,8 @@ export const useStore = create<AppState>((set, get) => ({
   dbStatus: { connected: false },
   inventory: [],
   transactions: [],
+  startDate: null,
+  endDate: null,
   pendingIssues: [],
   externalRequests: [],
   availableCategories: [],
@@ -59,6 +65,8 @@ export const useStore = create<AppState>((set, get) => ({
   setDbStatus: (status) => set({ dbStatus: status }),
   setInventory: (inventory) => set({ inventory }),
   setTransactions: (transactions) => set({ transactions }),
+  setStartDate: (date) => set({ startDate: date }),
+  setEndDate: (date) => set({ endDate: date }),
   setPendingIssues: (issues) => set({ pendingIssues: issues }),
   setExternalRequests: (requests) => set({ externalRequests: requests }),
   setAvailableCategories: (categories) => set({ availableCategories: categories }),
@@ -70,7 +78,7 @@ export const useStore = create<AppState>((set, get) => ({
   })),
   setActiveExternalRequestId: (id) => set({ activeExternalRequestId: id }),
 
-  loadAppData: async (silent = false, onSuccess, onError) => {
+  loadAppData: async (silent = false, onSuccess, onError, startDate, endDate) => {
     try {
       if (!silent) set({ isSyncing: true });
       if (!get().appInit) set({ isLoadingData: true });
@@ -82,7 +90,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       const [inv, txs, pi, extReqs, cfg] = await Promise.all([
         db.getInventory(), 
-        db.getTransactions(), 
+        db.getTransactions(startDate, endDate), 
         db.getPendingIssues(), 
         db.getExternalRequests(),
         db.getConfig(), 

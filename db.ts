@@ -277,6 +277,35 @@ export const db = {
     }
   },
 
+  async getReleasedIssues(startDate?: string, endDate?: string): Promise<PendingIssue[]> {
+    try {
+      let query = "SELECT * FROM pending_issues WHERE status = 'released'";
+      const args: (string | number | null)[] = [];
+      
+      if (startDate && endDate) {
+        query += " AND timestamp >= ? AND timestamp <= ?";
+        args.push(startDate, endDate);
+      }
+      
+      query += " ORDER BY timestamp DESC";
+      
+      const res = await client.execute({ sql: query, args });
+      return res.rows.map(row => ({
+        id: String(row.id),
+        timestamp: String(row.timestamp),
+        user: String(row.user_name),
+        receiverName: String(row.receiver_name || ''),
+        department: String(row.department),
+        signature: String(row.signature || ''),
+        items: JSON.parse(String(row.items_json || '[]')),
+        status: row.status as 'pending' | 'released',
+      }));
+    } catch (e: unknown) {
+      console.error("Error fetching released issues:", e);
+      return [];
+    }
+  },
+
   async getExternalRequests(): Promise<PendingIssue[]> {
     try {
       if (!requestClient) {
