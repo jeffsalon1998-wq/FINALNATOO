@@ -85,3 +85,18 @@ export interface SqlStatement {
   sql: string;
   args: (string | number | null)[];
 }
+
+export interface Config {
+  categories: string[];
+  departments: string[];
+  zones: string[];
+  adminPassword?: string;
+}
+
+export interface ExternalRequest {
+  id: string;
+  timestamp: string;
+  type: string;
+  status: string;
+  details: Record<string, unknown>;
+}

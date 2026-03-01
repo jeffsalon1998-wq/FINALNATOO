@@ -172,7 +172,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({ onSave, onClear }) =
   return (
     <div 
       ref={containerRef} 
-      className={`space-y-2 flex flex-col touch-none ${isFullscreen ? 'fixed inset-0 z-[1000] bg-white p-6 flex flex-col' : 'relative w-full'}`}
+      className={`space-y-2 flex flex-col touch-none ${isFullscreen ? 'fixed inset-0 z-[1000] bg-white p-4 flex flex-col' : 'relative w-full'}`}
       style={isFullscreen ? {
         top: '50%',
         left: '50%',
@@ -194,7 +194,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({ onSave, onClear }) =
         </div>
       </div>
       
-      <div className={`border-2 border-dashed border-gray-200 rounded-2xl overflow-hidden bg-gray-50/50 ${isFullscreen ? 'flex-1' : 'h-36'}`}>
+      <div className={`border-2 border-dashed border-gray-200 rounded-2xl overflow-hidden bg-gray-50/50 ${isFullscreen ? 'flex-1' : 'h-32'}`}>
         <canvas
           ref={canvasRef}
           className="w-full h-full cursor-crosshair touch-none bg-white/50"

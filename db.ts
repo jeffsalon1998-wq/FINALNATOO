@@ -33,6 +33,122 @@ const initClient = () => {
 // Initial creation
 initClient();
 
+const safeJsonParse = <T>(json: string | null | undefined, fallback: T): T => {
+  if (!json) return fallback;
+  try {
+    // Attempt to fix common JSON errors like trailing commas
+    const sanitized = json.replace(/,(\s*[}\]])/g, '$1');
+    return JSON.parse(sanitized);
+  } catch (e) {
+    console.warn("Failed to parse JSON:", json, e);
+    return fallback;
+  }
+};
+
+const createTables = async () => {
+  try {
+    // Check if we need to migrate schema (e.g. check if unit_cost is TEXT)
+    // We also check for NUMERIC type which causes issues
+    const tableInfo = await client.execute("PRAGMA table_info(inventory)");
+    const unitCostCol = tableInfo.rows.find(r => r.name === 'unit_cost');
+    const needsMigration = unitCostCol && (unitCostCol.type === 'TEXT' || unitCostCol.type === 'NUMERIC');
+
+    if (needsMigration) {
+      console.log("Migrating database schema...");
+      // Rename old table
+      await client.execute("ALTER TABLE inventory RENAME TO inventory_old");
+      
+      // Create new table with correct types
+      await client.execute(`
+        CREATE TABLE inventory (
+          id TEXT PRIMARY KEY,
+          sku TEXT,
+          name TEXT,
+          category TEXT,
+          uom TEXT,
+          unit_cost REAL,
+          par_stock REAL,
+          initial_par_stock REAL,
+          stock_json TEXT,
+          batches_json TEXT,
+          earliest_expiry TEXT
+        )
+      `);
+
+      // Migrate data
+      await client.execute(`
+        INSERT INTO inventory (id, sku, name, category, uom, unit_cost, par_stock, initial_par_stock, stock_json, batches_json, earliest_expiry)
+        SELECT 
+          id, sku, name, category, uom, 
+          CAST(unit_cost AS REAL), 
+          CAST(par_stock AS REAL), 
+          CAST(initial_par_stock AS REAL), 
+          stock_json, batches_json, earliest_expiry
+        FROM inventory_old
+      `);
+
+      // Drop old table
+      await client.execute("DROP TABLE inventory_old");
+      console.log("Migration complete.");
+    }
+
+    // Standard creation if not exists (idempotent)
+    await client.batch([
+      `CREATE TABLE IF NOT EXISTS inventory (
+        id TEXT PRIMARY KEY,
+        sku TEXT,
+        name TEXT,
+        category TEXT,
+        uom TEXT,
+        unit_cost REAL,
+        par_stock REAL,
+        initial_par_stock REAL,
+        stock_json TEXT,
+        batches_json TEXT,
+        earliest_expiry TEXT
+      )`,
+      `CREATE TABLE IF NOT EXISTS transactions (
+        id TEXT PRIMARY KEY,
+        timestamp TEXT,
+        user_name TEXT,
+        action TEXT,
+        qty REAL,
+        item_sku TEXT,
+        item_name TEXT,
+        item_uom TEXT,
+        dest_zone TEXT,
+        department TEXT,
+        receiver_name TEXT,
+        signature TEXT
+      )`,
+      `CREATE TABLE IF NOT EXISTS pending_issues (
+        id TEXT PRIMARY KEY,
+        timestamp TEXT,
+        department TEXT,
+        user_name TEXT,
+        items_json TEXT,
+        status TEXT,
+        receiver_name TEXT,
+        signature TEXT
+      )`,
+      `CREATE TABLE IF NOT EXISTS config (
+        key TEXT PRIMARY KEY,
+        value_json TEXT
+      )`,
+      `CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        role TEXT
+      )`
+    ], "write");
+
+    return true;
+  } catch (error) {
+    console.error("Database initialization failed", error);
+    return false;
+  }
+};
+
 export const db = {
   async setCredentials(url: string, token: string) {
     localStorage.setItem('TURSO_URL', url);
@@ -59,61 +175,14 @@ export const db = {
 
   async initialize() {
     try {
-      // Step 1: Schema Setup
-      await client.batch([
-        `CREATE TABLE IF NOT EXISTS inventory (
-          id TEXT PRIMARY KEY,
-          sku TEXT,
-          name TEXT,
-          category TEXT,
-          uom TEXT,
-          unit_cost REAL,
-          par_stock REAL,
-          initial_par_stock REAL,
-          stock_json TEXT,
-          batches_json TEXT,
-          earliest_expiry TEXT
-        )`,
-        `CREATE TABLE IF NOT EXISTS transactions (
-          id TEXT PRIMARY KEY,
-          timestamp TEXT,
-          user_name TEXT,
-          action TEXT,
-          qty REAL,
-          item_sku TEXT,
-          item_name TEXT,
-          item_uom TEXT,
-          dest_zone TEXT,
-          department TEXT,
-          receiver_name TEXT,
-          signature TEXT
-        )`,
-        `CREATE TABLE IF NOT EXISTS pending_issues (
-          id TEXT PRIMARY KEY,
-          timestamp TEXT,
-          user_name TEXT,
-          receiver_name TEXT,
-          department TEXT,
-          signature TEXT,
-          items_json TEXT,
-          status TEXT
-        )`,
-        `CREATE TABLE IF NOT EXISTS config (
-          key TEXT PRIMARY KEY,
-          value_json TEXT
-        )`,
-        `CREATE TABLE IF NOT EXISTS users (
-          id TEXT PRIMARY KEY,
-          name TEXT,
-          role TEXT
-        )`
-      ], "write");
+      const success = await createTables();
+      if (!success) return false;
 
       // Step 2: Seeding Check
       const invCheck = await client.execute("SELECT count(*) as count FROM inventory");
       const configCheck = await client.execute("SELECT count(*) as count FROM config");
 
-      if (invCheck.rows[0].count === 0) {
+      if (Number(invCheck.rows[0].count) === 0) {
         const statements = INITIAL_INVENTORY.map(item => ({
           sql: `INSERT INTO inventory (id, sku, name, category, uom, unit_cost, par_stock, initial_par_stock, stock_json, batches_json, earliest_expiry) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -128,7 +197,7 @@ export const db = {
         }
       }
 
-      if (configCheck.rows[0].count === 0) {
+      if (Number(configCheck.rows[0].count) === 0) {
         await this.saveConfig({
           categories: ['Dry Goods', 'Alcohol', 'Guest Supplies', 'Chemicals'],
           departments: DEPARTMENTS,
@@ -142,7 +211,7 @@ export const db = {
       }
 
       const userCheck = await client.execute("SELECT count(*) as count FROM users");
-      if (userCheck.rows[0].count === 0) {
+      if (Number(userCheck.rows[0].count) === 0) {
         const userStatementsWithIds = MOCK_USERS.map(user => ({
           sql: "INSERT OR REPLACE INTO users (id, name, role) VALUES (?, ?, ?)",
           args: [user.id, user.name, user.role]
@@ -169,8 +238,8 @@ export const db = {
         unitCost: Number(row.unit_cost),
         parStock: Number(row.par_stock),
         initialParStock: Number(row.initial_par_stock),
-        stock: JSON.parse(String(row.stock_json || '{}')),
-        batches: JSON.parse(String(row.batches_json || '[]')),
+        stock: safeJsonParse(String(row.stock_json || '{}'), {}),
+        batches: safeJsonParse(String(row.batches_json || '[]'), []),
         earliestExpiry: String(row.earliest_expiry)
       }));
     } catch (e: unknown) {
@@ -268,7 +337,7 @@ export const db = {
         receiverName: String(row.receiver_name || ''),
         department: String(row.department),
         signature: String(row.signature || ''),
-        items: JSON.parse(String(row.items_json || '[]')),
+        items: safeJsonParse(String(row.items_json || '[]'), []),
         status: row.status as 'pending' | 'released',
       }));
     } catch (e: unknown) {
@@ -297,7 +366,7 @@ export const db = {
         receiverName: String(row.receiver_name || ''),
         department: String(row.department),
         signature: String(row.signature || ''),
-        items: JSON.parse(String(row.items_json || '[]')),
+        items: safeJsonParse(String(row.items_json || '[]'), []),
         status: row.status as 'pending' | 'released',
       }));
     } catch (e: unknown) {
@@ -323,7 +392,7 @@ export const db = {
 
         try {
           // Parse items from JSON blob in 'items' column
-          const rawItems = JSON.parse(String(row.items || '[]'));
+          const rawItems = safeJsonParse(String(row.items || '[]'), []);
           
           if (Array.isArray(rawItems)) {
             items = rawItems
@@ -417,23 +486,28 @@ export const db = {
       ];
 
       inventory.forEach(item => {
+        const unitCost = isNaN(item.unitCost) ? 0 : item.unitCost;
+        const parStock = isNaN(item.parStock) ? 0 : item.parStock;
+        const initialParStock = isNaN(item.initialParStock) ? 0 : item.initialParStock;
+
         statements.push({
           sql: `INSERT INTO inventory (id, sku, name, category, uom, unit_cost, par_stock, initial_par_stock, stock_json, batches_json, earliest_expiry) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           args: [
-            item.id, item.sku, item.name, item.category, item.uom, item.unitCost, 
-            item.parStock, item.initialParStock, JSON.stringify(item.stock), 
+            item.id, item.sku, item.name, item.category, item.uom, unitCost, 
+            parStock, initialParStock, JSON.stringify(item.stock), 
             JSON.stringify(item.batches), item.earliestExpiry
           ]
         });
       });
 
       transactions.forEach(tx => {
+        const qty = isNaN(tx.qty) ? 0 : tx.qty;
         statements.push({
           sql: `INSERT INTO transactions (id, timestamp, user_name, action, qty, item_sku, item_name, item_uom, dest_zone, department, receiver_name, signature)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           args: [
-            tx.id, tx.timestamp, tx.user, tx.action, tx.qty, tx.itemSku, 
+            tx.id, tx.timestamp, tx.user, tx.action, qty, tx.itemSku, 
             tx.itemName, tx.itemUom || '', tx.destZone, tx.department || '', 
             tx.receiverName || '', tx.signature || ''
           ]
@@ -464,7 +538,7 @@ export const db = {
         sql: "SELECT value_json FROM config WHERE key = ?",
         args: ["system_config"]
       });
-      return res.rows.length > 0 ? JSON.parse(String(res.rows[0].value_json)) : { categories: [], departments: [], zones: [] };
+      return res.rows.length > 0 ? safeJsonParse(String(res.rows[0].value_json), { categories: [], departments: [], zones: [] }) : { categories: [], departments: [], zones: [] };
     } catch (e: unknown) {
       console.error("Error fetching config:", e);
       return { categories: [], departments: [], zones: [] };
@@ -489,7 +563,7 @@ export const db = {
         sql: "SELECT value_json FROM config WHERE key = ?",
         args: ["admin_password"]
       });
-      return res.rows.length > 0 ? JSON.parse(String(res.rows[0].value_json)) : '1234';
+      return res.rows.length > 0 ? safeJsonParse(String(res.rows[0].value_json), '1234') : '1234';
     } catch (err: unknown) {
       console.error("Error fetching admin password:", err);
       return '1234';
@@ -526,7 +600,7 @@ export const db = {
         sql: "SELECT value_json FROM config WHERE key = ?",
         args: ["audit_state"]
       });
-      return res.rows.length > 0 ? JSON.parse(String(res.rows[0].value_json)) : null;
+      return res.rows.length > 0 ? safeJsonParse(String(res.rows[0].value_json), null) : null;
     } catch (e: unknown) {
       console.error("Error fetching audit state:", e);
       return null;

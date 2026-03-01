@@ -94,7 +94,6 @@ const App: React.FC = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isRequestPickerOpen, setIsRequestPickerOpen] = useState(false);
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
-  const [externalRequests, setExternalRequests] = useState<PendingIssue[]>([]);
   
   // Turso Config State
   const [tursoUrl, setTursoUrl] = useState(localStorage.getItem('TURSO_URL') || process.env.VITE_TURSO_URL);
@@ -413,6 +412,10 @@ const App: React.FC = () => {
 
     let modifiedItem: InventoryItem;
 
+    const unitCost = Number(newItemData.unitCost) || 0;
+    const parStock = Number(newItemData.parStock) || 0;
+    const receivedQty = Number(newItemData.receivedQty) || 0;
+
     if (existingItem) {
       const idx = updatedInventory.findIndex(i => i.id === existingItem.id);
       const updatedItem = { ...existingItem };
@@ -426,9 +429,9 @@ const App: React.FC = () => {
         name: newItemData.name!,
         category: newItemData.category || availableCategories[0],
         uom: newItemData.uom || 'Units',
-        unitCost: newItemData.unitCost || 0,
-        parStock: newItemData.parStock || 0,
-        initialParStock: newItemData.parStock || 0,
+        unitCost: unitCost,
+        parStock: parStock,
+        initialParStock: parStock,
         isFastMoving: false,
         batches: [newBatch],
         stock: {},
@@ -443,7 +446,7 @@ const App: React.FC = () => {
       timestamp: new Date().toISOString(), 
       user: currentUser?.name || 'Unknown', 
       action: 'RECEIVE', 
-      qty: newItemData.receivedQty || 0, 
+      qty: receivedQty, 
       itemSku: newItemData.sku || existingItem?.sku || 'AUTO', 
       itemName: newItemData.name!, 
       destZone: newBatch.zone 
@@ -1835,6 +1838,17 @@ const App: React.FC = () => {
                   <div className="space-y-1">
                     <label className="text-[8px] font-black uppercase text-gray-300 ml-1">UOM</label>
                     <input type="text" placeholder="Units" value={newItemData.uom} onChange={e => setNewItemData({...newItemData, uom: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl font-black text-sm outline-none focus:border-[#800000]" />
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black uppercase text-gray-300 ml-1">Unit Cost</label>
+                    <input type="number" value={newItemData.unitCost || ''} onChange={e => setNewItemData({...newItemData, unitCost: Number(e.target.value)})} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl font-black text-sm outline-none focus:border-[#800000]" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black uppercase text-gray-300 ml-1">Par Stock</label>
+                    <input type="number" value={newItemData.parStock || ''} onChange={e => setNewItemData({...newItemData, parStock: Number(e.target.value)})} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl font-black text-sm outline-none focus:border-[#800000]" />
                   </div>
                </div>
 

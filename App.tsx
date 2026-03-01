@@ -107,7 +107,12 @@ const App: React.FC = () => {
   const [showAuditExitConfirm, setShowAuditExitConfirm] = useState(false);
   const [auditCounts, setAuditCounts] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('auditCounts');
-    return saved ? JSON.parse(saved) : {};
+    try {
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      console.warn("Failed to parse auditCounts from localStorage", e);
+      return {};
+    }
   });
 
   useEffect(() => {
@@ -1522,54 +1527,54 @@ const App: React.FC = () => {
       {/* Turso Cloud Setup Modal */}
       {isCloudSetupOpen && (
         <div className="fixed inset-0 z-[4000] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-[400px] rounded-[3rem] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white w-full max-w-[400px] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Header */}
-            <div className="p-8 flex items-center justify-between shrink-0">
+            <div className="p-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-4">
-                <div className="p-3.5 border-2 border-blue-600 rounded-2xl text-blue-600">
-                  <Database size={24} strokeWidth={2.5} />
+                <div className="p-2.5 border-2 border-blue-600 rounded-xl text-blue-600">
+                  <Database size={20} strokeWidth={2.5} />
                 </div>
                 <div>
-                  <h2 className="text-[15px] font-black uppercase tracking-[0.15em] text-blue-600 leading-none mb-1.5">Turso Cloud Setup</h2>
-                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-blue-400">Edge SQLite Integration</p>
+                  <h2 className="text-[13px] font-black uppercase tracking-[0.15em] text-blue-600 leading-none mb-1">Turso Cloud Setup</h2>
+                  <p className="text-[7px] font-black uppercase tracking-[0.2em] text-blue-400">Edge SQLite Integration</p>
                 </div>
               </div>
               <button onClick={() => setIsCloudSetupOpen(false)} className="p-2 text-gray-400 hover:text-gray-900 transition-colors">
-                <X size={24} />
+                <X size={20} />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-8 pb-8 space-y-8 no-scrollbar">
+            <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-4 no-scrollbar">
               {/* Info Box */}
-              <div className="bg-blue-50/50 p-6 rounded-[2rem] flex gap-5 border border-blue-100/50">
-                <div className="shrink-0 pt-1">
-                  <Cloud size={24} className="text-blue-500" strokeWidth={2.5} />
+              <div className="bg-blue-50/50 p-4 rounded-2xl flex gap-3 border border-blue-100/50">
+                <div className="shrink-0 pt-0.5">
+                  <Cloud size={20} className="text-blue-500" strokeWidth={2.5} />
                 </div>
-                <p className="text-[11px] font-black uppercase leading-[1.6] text-blue-800 tracking-wide">
+                <p className="text-[10px] font-black uppercase leading-[1.6] text-blue-800 tracking-wide">
                   Configure Turso for real-time warehouse synchronization.
                 </p>
               </div>
 
               {/* Form Fields */}
-              <div className="space-y-6">
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 ml-1">Database URL</label>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-400 ml-1">Database URL</label>
                   <input 
                     type="text" 
                     value={tursoUrl}
                     onChange={e => setTursoUrl(e.target.value)}
-                    className="w-full p-6 bg-gray-50 border border-gray-100 rounded-[1.8rem] font-bold text-sm text-gray-700 focus:border-blue-500 outline-none shadow-sm transition-all"
+                    className="w-full p-3 bg-gray-50 border border-gray-100 rounded-2xl font-bold text-xs text-gray-700 focus:border-blue-500 outline-none shadow-sm transition-all"
                     placeholder="libsql://..."
                   />
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 ml-1">Auth Token</label>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-400 ml-1">Auth Token</label>
                   <input 
                     type="password" 
                     value={tursoToken}
                     onChange={e => setTursoToken(e.target.value)}
-                    className="w-full p-6 bg-gray-50 border border-gray-100 rounded-[1.8rem] font-black text-4xl tracking-[0.5em] text-gray-700 focus:border-blue-500 outline-none shadow-sm transition-all"
+                    className="w-full p-3 bg-gray-50 border border-gray-100 rounded-2xl font-black text-lg tracking-[0.2em] text-gray-700 focus:border-blue-500 outline-none shadow-sm transition-all"
                   />
                 </div>
               </div>
@@ -1578,15 +1583,15 @@ const App: React.FC = () => {
                 href="https://turso.tech/dashboard" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-blue-600 border-b-2 border-blue-100 pb-1 hover:border-blue-600 transition-all ml-1"
+                className="inline-flex items-center gap-2 text-[8px] font-black uppercase tracking-widest text-blue-600 border-b-2 border-blue-100 pb-1 hover:border-blue-600 transition-all ml-1"
               >
                 Get Credentials from Turso CLI/Dashboard <ExternalLink size={10} />
               </a>
 
-              <div className="pt-4">
+              <div className="pt-2">
                 <button 
                   onClick={handleCloudDisconnect}
-                  className="w-full py-5 border-2 border-red-50 text-red-500 rounded-[1.8rem] font-black uppercase text-[10px] tracking-widest hover:bg-red-50 active:scale-95 transition-all"
+                  className="w-full py-4 border-2 border-red-50 text-red-500 rounded-2xl font-black uppercase text-[9px] tracking-widest hover:bg-red-50 active:scale-95 transition-all"
                 >
                   Disconnect Cloud Storage
                 </button>
@@ -1594,19 +1599,19 @@ const App: React.FC = () => {
             </div>
 
             {/* Footer */}
-            <div className="p-8 border-t bg-gray-50/50 flex items-center justify-between shrink-0">
+            <div className="p-4 border-t bg-gray-50/50 flex items-center justify-between shrink-0">
               <button 
                 onClick={() => setIsCloudSetupOpen(false)}
-                className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400 px-4 py-2"
+                className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 px-4 py-2"
               >
                 Back
               </button>
               <button 
                 onClick={handleCloudConnect}
                 disabled={isConnecting}
-                className="bg-blue-600 text-white px-8 py-5 rounded-[1.5rem] font-black uppercase text-[11px] tracking-widest flex items-center gap-3 shadow-xl shadow-blue-500/20 active:scale-95 disabled:opacity-50 transition-all"
+                className="bg-blue-600 text-white px-6 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center gap-2 shadow-xl shadow-blue-500/20 active:scale-95 disabled:opacity-50 transition-all"
               >
-                {isConnecting ? <><Loader2 className="animate-spin" size={18} /> Connecting...</> : <><RefreshCw size={18} strokeWidth={3} /> Connect & Sync</>}
+                {isConnecting ? <><Loader2 className="animate-spin" size={16} /> Connecting...</> : <><RefreshCw size={16} strokeWidth={3} /> Connect & Sync</>}
               </button>
             </div>
           </div>
@@ -1720,98 +1725,98 @@ const App: React.FC = () => {
       {/* Edit Item Modal */}
       {isEditingItem && (
         <div className="fixed inset-0 z-[2000] bg-black/60 flex items-center justify-center p-2 backdrop-blur-sm overflow-y-auto">
-           <div className="bg-white w-full max-w-[340px] rounded-[2rem] p-6 space-y-4 animate-in zoom-in-95 my-auto shadow-2xl">
+           <div className="bg-white w-full max-w-[340px] rounded-3xl p-4 space-y-3 animate-in zoom-in-95 my-auto shadow-2xl">
               <div className="flex justify-between items-start border-b border-gray-50 pb-2">
                 <div>
-                  <h3 className="text-[14px] font-black uppercase tracking-widest text-[#800000]">SYSTEM REGISTRY</h3>
-                  <p className="text-[9px] font-bold text-gray-400 uppercase leading-none">SKU: {isEditingItem.sku}</p>
+                  <h3 className="text-[12px] font-black uppercase tracking-widest text-[#800000]">SYSTEM REGISTRY</h3>
+                  <p className="text-[8px] font-bold text-gray-400 uppercase leading-none">SKU: {isEditingItem.sku}</p>
                 </div>
-                <button onClick={() => setIsEditingItem(null)} className="text-gray-300 p-1"><X size={20}/></button>
+                <button onClick={() => setIsEditingItem(null)} className="text-gray-300 p-1"><X size={18}/></button>
               </div>
 
-              <div className="space-y-4 max-h-[60vh] overflow-y-auto no-scrollbar py-1">
+              <div className="space-y-3 max-h-[60vh] overflow-y-auto no-scrollbar py-1">
                  <div className="space-y-1">
-                    <label className="text-[9px] font-black uppercase text-gray-400 ml-1">REGISTRY NAME</label>
-                    <input type="text" value={isEditingItem.name} onChange={e => setIsEditingItem({...isEditingItem, name: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl font-black text-lg outline-none focus:border-[#800000] shadow-sm" />
+                    <label className="text-[8px] font-black uppercase text-gray-400 ml-1">REGISTRY NAME</label>
+                    <input type="text" value={isEditingItem.name} onChange={e => setIsEditingItem({...isEditingItem, name: e.target.value})} className="w-full px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-2xl font-black text-base outline-none focus:border-[#800000] shadow-sm" />
                  </div>
                  
-                 <div className="grid grid-cols-2 gap-3">
+                 <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                       <label className="text-[9px] font-black uppercase text-gray-400 ml-1">CLASSIFICATION</label>
-                       <select value={isEditingItem.category} onChange={e => setIsEditingItem({...isEditingItem, category: e.target.value})} className="w-full px-3 py-3 bg-gray-50 border border-gray-100 rounded-2xl font-black text-base uppercase focus:border-[#800000] outline-none shadow-sm">
+                       <label className="text-[8px] font-black uppercase text-gray-400 ml-1">CLASSIFICATION</label>
+                       <select value={isEditingItem.category} onChange={e => setIsEditingItem({...isEditingItem, category: e.target.value})} className="w-full px-2 py-2.5 bg-gray-50 border border-gray-100 rounded-2xl font-black text-sm uppercase focus:border-[#800000] outline-none shadow-sm">
                           {(availableCategories || []).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                        </select>
                     </div>
                     <div className="space-y-1">
-                       <label className="text-[9px] font-black uppercase text-gray-400 ml-1">UOM</label>
-                       <input type="text" value={isEditingItem.uom} onChange={e => setIsEditingItem({...isEditingItem, uom: e.target.value})} className="w-full px-3 py-3 bg-gray-50 border border-gray-100 rounded-2xl font-black text-base focus:border-[#800000] outline-none uppercase shadow-sm" />
+                       <label className="text-[8px] font-black uppercase text-gray-400 ml-1">UOM</label>
+                       <input type="text" value={isEditingItem.uom} onChange={e => setIsEditingItem({...isEditingItem, uom: e.target.value})} className="w-full px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-2xl font-black text-sm focus:border-[#800000] outline-none uppercase shadow-sm" />
                     </div>
                  </div>
 
-                 <div className="grid grid-cols-2 gap-3">
+                 <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                       <label className="text-[9px] font-black uppercase text-gray-400 ml-1">SAFETY PAR</label>
-                       <input type="number" value={isEditingItem.parStock} onChange={e => setIsEditingItem({...isEditingItem, parStock: Number(e.target.value)})} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl font-black text-xl focus:border-[#800000] outline-none shadow-sm" />
+                       <label className="text-[8px] font-black uppercase text-gray-400 ml-1">SAFETY PAR</label>
+                       <input type="number" value={isEditingItem.parStock} onChange={e => setIsEditingItem({...isEditingItem, parStock: Number(e.target.value)})} className="w-full px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-2xl font-black text-lg focus:border-[#800000] outline-none shadow-sm" />
                     </div>
                     <div className="space-y-1">
-                       <label className="text-[9px] font-black uppercase text-gray-400 ml-1">BASE COST</label>
-                       <input type="number" value={isEditingItem.unitCost} onChange={e => setIsEditingItem({...isEditingItem, unitCost: Number(e.target.value)})} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl font-black text-xl focus:border-[#800000] outline-none shadow-sm" />
+                       <label className="text-[8px] font-black uppercase text-gray-400 ml-1">BASE COST</label>
+                       <input type="number" value={isEditingItem.unitCost} onChange={e => setIsEditingItem({...isEditingItem, unitCost: Number(e.target.value)})} className="w-full px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-2xl font-black text-lg focus:border-[#800000] outline-none shadow-sm" />
                     </div>
                  </div>
 
-                 <div className="space-y-3 pt-2 border-t border-gray-50">
-                    <h4 className="text-[10px] font-black uppercase tracking-widest text-[#800000]">ACTIVE STOCK BATCHES</h4>
+                 <div className="space-y-2 pt-2 border-t border-gray-50">
+                    <h4 className="text-[9px] font-black uppercase tracking-widest text-[#800000]">ACTIVE STOCK BATCHES</h4>
                     {(isEditingItem.batches || []).map((batch, idx) => (
-                      <div key={batch.id} className="bg-gray-50 p-4 rounded-3xl space-y-3 border border-gray-100 relative shadow-sm">
+                      <div key={batch.id} className="bg-gray-50 p-3 rounded-2xl space-y-2 border border-gray-100 relative shadow-sm">
                         <div className="flex justify-between items-center px-1">
-                           <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">BATCH REF: {batch.id.split('-').pop()}</span>
-                           <button onClick={() => setIsEditingItem({ ...isEditingItem, batches: (isEditingItem.batches || []).filter((_, i) => i !== idx) })} className="text-red-400 hover:text-red-600"><Trash2 size={16} /></button>
+                           <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest">BATCH REF: {batch.id.split('-').pop()}</span>
+                           <button onClick={() => setIsEditingItem({ ...isEditingItem, batches: (isEditingItem.batches || []).filter((_, i) => i !== idx) })} className="text-red-400 hover:text-red-600"><Trash2 size={14} /></button>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 gap-2">
                            <div className="space-y-1">
-                             <label className="text-[8px] font-black text-gray-400 uppercase ml-1">QTY</label>
+                             <label className="text-[7px] font-black text-gray-400 uppercase ml-1">QTY</label>
                              <input type="number" value={batch.quantity} onChange={e => {
                                  const updated = [...(isEditingItem.batches || [])];
                                  updated[idx] = { ...batch, quantity: Number(e.target.value) };
                                  setIsEditingItem({ ...isEditingItem, batches: updated });
-                               }} className="w-full px-4 py-3 bg-white border border-gray-100 rounded-2xl text-2xl font-black outline-none focus:border-[#800000]" />
+                               }} className="w-full px-3 py-2 bg-white border border-gray-100 rounded-xl text-lg font-black outline-none focus:border-[#800000]" />
                            </div>
                            <div className="space-y-1">
-                             <label className="text-[8px] font-black text-gray-400 uppercase ml-1">ZONE</label>
+                             <label className="text-[7px] font-black text-gray-400 uppercase ml-1">ZONE</label>
                              <select value={batch.zone} onChange={e => {
                                  const updated = [...(isEditingItem.batches || [])];
                                  updated[idx] = { ...batch, zone: e.target.value };
                                  setIsEditingItem({ ...isEditingItem, batches: updated });
-                               }} className="w-full px-3 py-3 bg-white border border-gray-100 rounded-2xl text-lg font-black outline-none uppercase">
+                               }} className="w-full px-2 py-2 bg-white border border-gray-100 rounded-xl text-sm font-black outline-none uppercase">
                                {(availableZones || []).map(z => <option key={z} value={z}>{z.split(' (')[0]}</option>)}
                              </select>
                            </div>
                         </div>
                         <div className="space-y-1">
-                           <label className="text-[8px] font-black text-gray-400 uppercase ml-1">EXPIRY DATE</label>
+                           <label className="text-[7px] font-black text-gray-400 uppercase ml-1">EXPIRY DATE</label>
                            <input type="date" value={batch.expiry === '2099-12-31' ? '' : batch.expiry} onChange={e => {
                                const updated = [...(isEditingItem.batches || [])];
                                updated[idx] = { ...batch, expiry: e.target.value || '2099-12-31' };
                                setIsEditingItem({ ...isEditingItem, batches: updated });
-                             }} className="w-full px-4 py-3 bg-white border border-gray-100 rounded-2xl text-xl font-black outline-none" />
+                             }} className="w-full px-3 py-2 bg-white border border-gray-100 rounded-xl text-sm font-black outline-none" />
                         </div>
                       </div>
                     ))}
                     <button onClick={() => setIsEditingItem({ ...isEditingItem, batches: [...(isEditingItem.batches || []), { id: `BAT-${Math.random().toString(36).substr(2, 5).toUpperCase()}`, expiry: '2099-12-31', quantity: 0, zone: availableZones[0] }] })}
-                      className="w-full py-3.5 border border-dashed border-gray-200 rounded-2xl text-[10px] font-black text-gray-400 uppercase active:bg-gray-50 tracking-widest">+ MANUAL ENTRY</button>
+                      className="w-full py-3 border border-dashed border-gray-200 rounded-2xl text-[9px] font-black text-gray-400 uppercase active:bg-gray-50 tracking-widest">+ MANUAL ENTRY</button>
                  </div>
               </div>
 
-              <div className="pt-2 space-y-4">
-                 <button onClick={handleEditItemSubmit} className="w-full py-5 bg-[#800000] text-white rounded-2xl font-black uppercase text-sm tracking-widest shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all">
-                    <Save size={18}/> SAVE REGISTRY
+              <div className="pt-2 space-y-3">
+                 <button onClick={handleEditItemSubmit} className="w-full py-4 bg-[#800000] text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all">
+                    <Save size={16}/> SAVE REGISTRY
                  </button>
-                 <div className="p-3 bg-gray-50 rounded-3xl border border-gray-100/50">
+                 <div className="p-2 bg-gray-50 rounded-2xl border border-gray-100/50">
                    <button 
                     onClick={handleDeleteItem} 
-                    className="w-full py-4 bg-[#fff5f5] text-red-600 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 active:bg-red-50 transition-all border border-red-100/30 shadow-sm"
+                    className="w-full py-3 bg-[#fff5f5] text-red-600 rounded-xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 active:bg-red-50 transition-all border border-red-100/30 shadow-sm"
                    >
-                      <Trash2 size={18}/> PERMANENT WIPE
+                      <Trash2 size={16}/> PERMANENT WIPE
                    </button>
                  </div>
               </div>
@@ -2068,7 +2073,7 @@ const App: React.FC = () => {
       {/* Receive Stock Modal */}
       {isAddingItem && (
         <div className="fixed inset-0 z-[2000] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl p-6 space-y-5 animate-in zoom-in-95 my-auto relative">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-4 space-y-4 animate-in zoom-in-95 my-auto relative">
              <div className="flex justify-between items-center border-b pb-3">
                <div className="flex items-center gap-2">
                  <div className="p-1.5 bg-green-50 text-green-600 rounded-lg"><PlusCircle size={16}/></div>
@@ -2104,7 +2109,7 @@ const App: React.FC = () => {
                           setShowSuggestions(false);
                         }
                       }} 
-                      className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl font-bold outline-none focus:border-[#800000] text-sm shadow-sm pr-12" 
+                      className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl font-bold outline-none focus:border-[#800000] text-xs shadow-sm pr-10" 
                     />
                     <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none">
                       <Search size={18} />
@@ -2145,11 +2150,11 @@ const App: React.FC = () => {
                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-[8px] font-black uppercase text-gray-300 ml-1">Quantity</label>
-                    <input type="number" value={newItemData.receivedQty || ''} onChange={e => setNewItemData({...newItemData, receivedQty: Number(e.target.value)})} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl font-black text-sm outline-none focus:border-[#800000]" />
+                    <input type="number" value={newItemData.receivedQty || ''} onChange={e => setNewItemData({...newItemData, receivedQty: Number(e.target.value)})} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl font-black text-xs outline-none focus:border-[#800000]" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[8px] font-black uppercase text-gray-300 ml-1">UOM</label>
-                    <input type="text" placeholder="Units" value={newItemData.uom} onChange={e => setNewItemData({...newItemData, uom: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl font-black text-sm outline-none focus:border-[#800000]" />
+                    <input type="text" placeholder="Units" value={newItemData.uom} onChange={e => setNewItemData({...newItemData, uom: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl font-black text-xs outline-none focus:border-[#800000]" />
                   </div>
                </div>
 
@@ -2165,7 +2170,7 @@ const App: React.FC = () => {
                </div>
              </div>
              
-             <button onClick={handleAddItemSubmit} className="w-full py-5 bg-[#800000] text-white rounded-xl font-black uppercase text-[11px] tracking-widest active:scale-[0.98] transition-all shadow-lg mt-3">Finalize Admission</button>
+             <button onClick={handleAddItemSubmit} className="w-full py-4 bg-[#800000] text-white rounded-xl font-black uppercase text-[10px] tracking-widest active:scale-[0.98] transition-all shadow-lg mt-2">Finalize Admission</button>
           </div>
         </div>
       )}
@@ -2173,21 +2178,21 @@ const App: React.FC = () => {
       {/* Signature & Finalize Modal */}
       {isFinalizingIssue && (
         <div className="fixed inset-0 z-[2200] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
-            <div className="p-6 border-b flex justify-between items-center bg-gray-50">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
               <div><h3 className="text-xs font-black uppercase tracking-widest text-[#800000]">Authentication</h3><p className="text-[8px] font-bold text-gray-400 uppercase mt-0.5">{activeRequestToFinalize?.department}</p></div>
               <button onClick={() => setIsFinalizingIssue(false)} className="text-gray-400"><X size={18}/></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
               <div className="space-y-1.5">
                 <label className="text-[8px] font-black uppercase tracking-widest text-gray-300 ml-1">Personnel Name</label>
-                <input type="text" placeholder="Print Name Clearly" value={receiverName} onChange={e => setReceiverName(e.target.value)} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-[#800000] font-black uppercase text-sm shadow-inner" />
+                <input type="text" placeholder="Print Name Clearly" value={receiverName} onChange={e => setReceiverName(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:border-[#800000] font-black uppercase text-xs shadow-inner" />
               </div>
               <SignaturePad onSave={setSignature} onClear={() => setSignature(null)} />
             </div>
-            <div className="p-6 border-t bg-gray-50 flex gap-3">
-              <button onClick={() => setIsFinalizingIssue(false)} className="flex-1 py-4 border text-gray-400 font-black uppercase text-[9px] rounded-xl border-gray-100">Cancel</button>
-              <button disabled={!signature || !receiverName} onClick={handleFinalRelease} className="flex-1 py-4 bg-[#800000] text-white font-black uppercase text-[9px] rounded-xl shadow-lg flex items-center justify-center gap-2 active:scale-95 disabled:opacity-20 transition-all">
+            <div className="p-4 border-t bg-gray-50 flex gap-3">
+              <button onClick={() => setIsFinalizingIssue(false)} className="flex-1 py-3 border text-gray-400 font-black uppercase text-[9px] rounded-xl border-gray-100">Cancel</button>
+              <button disabled={!signature || !receiverName} onClick={handleFinalRelease} className="flex-1 py-3 bg-[#800000] text-white font-black uppercase text-[9px] rounded-xl shadow-lg flex items-center justify-center gap-2 active:scale-95 disabled:opacity-20 transition-all">
                 <Save size={14}/> Release
               </button>
             </div>
