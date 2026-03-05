@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover">
+    <title>Sunlight Inventory</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#800000">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Great+Vibes&family=Montserrat:wght@700;900&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet" crossorigin="anonymous">
+    <style>
+        :root {
+            --sat: env(safe-area-inset-top);
+            --sar: env(safe-area-inset-right);
+            --sab: env(safe-area-inset-bottom);
+            --sal: env(safe-area-inset-left);
+        }
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f9fafb;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            color: #1a1a1a;
+            /* Support dynamic viewport height */
+            height: 100dvh;
+        }
+        #root {
+            height: 100%;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .signature-pad {
+            border: 1px dashed #d1d5db;
+            background-color: #f9fafb;
+            cursor: crosshair;
+            touch-action: none;
+        }
+        .brand-script {
+            font-family: 'Great Vibes', cursive;
+        }
+        .brand-title {
+            font-family: 'Montserrat', sans-serif;
+        }
+        input, select { font-size: 16px !important; } /* Prevents iOS zoom */
+        @media print {
+            .print\:hidden { display: none !important; }
+        }
+        
+        /* Safe Area Helper Classes */
+        .pt-safe { padding-top: var(--sat); }
+        .pb-safe { padding-bottom: var(--sab); }
+        .pl-safe { padding-left: var(--sal); }
+        .pr-safe { padding-right: var(--sar); }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .animate-shake { animation: shake 0.2s ease-in-out 0s 2; }
+    </style>
+    <link rel="stylesheet" href="/index.css">
+</head>
+<body>
+    <div id="root"></div>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>

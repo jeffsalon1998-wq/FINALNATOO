@@ -12,7 +12,7 @@ import {
   LayoutDashboard, Package, History, ShoppingCart, 
   Search, X, CheckCircle2, Sparkles,
   Settings, TrendingDown, 
-  PlusCircle, RotateCcw, Minus, Plus,
+  PlusCircle, RotateCcw,
   ArrowRight, ShieldCheck, ClipboardList, CalendarClock, Lock, Loader2, Eye, Save, Send, FileOutput, Trash2, Database, Shield, Cloud, ExternalLink, RefreshCw, UploadCloud, AlertCircle, FileText, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { StatCard } from './components/StatCard';
@@ -95,7 +95,6 @@ const App: React.FC = () => {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
-  const [itemForZoneSelection, setItemForZoneSelection] = useState<{ item: InventoryItem, quantity: number } | null>(null);
   
   // Turso Config State
   const [tursoUrl, setTursoUrl] = useState(localStorage.getItem('TURSO_URL') || process.env.VITE_TURSO_URL);
@@ -386,9 +385,9 @@ const App: React.FC = () => {
 
     for (const item of activeRequestToFinalize.items) {
       const invItem = updatedInventory.find(i => i.id === item.itemId);
-      const zoneStock = invItem?.stock?.[item.zone] || 0;
-      if (zoneStock < item.quantity) {
-        alert(`Insufficient Stock in ${item.zone}: ${item.name} (Available: ${zoneStock})`);
+      const totalStock = Object.values(invItem?.stock || {}).reduce((a, b) => (a as number) + (b as number), 0);
+      if (totalStock < item.quantity) {
+        alert(`Insufficient Stock: ${item.name} (Total Available: ${totalStock})`);
         return;
       }
     }
@@ -401,9 +400,9 @@ const App: React.FC = () => {
       const item = JSON.parse(JSON.stringify(updatedInventory[invIndex]));
       let remainingToDeduct = cartItem.quantity;
       
-      // Get all batches with quantity > 0 in the SPECIFIED ZONE, sorted by expiry (FIFO)
+      // Get all batches with quantity > 0, sorted by expiry (FIFO)
       const availableBatches = (item.batches || [])
-        .filter(b => b.quantity > 0 && b.zone === cartItem.zone)
+        .filter(b => b.quantity > 0)
         .sort((a, b) => new Date(a.expiry).getTime() - new Date(b.expiry).getTime());
 
       for (const batch of availableBatches) {
@@ -1192,12 +1191,15 @@ const App: React.FC = () => {
                     key={item.id} 
                     item={item} 
                     selectedZone={selectedZone as Zone} 
-                    onIssue={(i, q) => {
-                      if (isGuest) {
-                        notifyError("Guest mode: View only");
-                        return;
-                      }
-                      setItemForZoneSelection({ item: i, quantity: q });
+                    onIssue={(i, q, forcedZone) => {
+                      if (isGuest) return;
+                      setCart(prev => {
+                        const existing = (prev || []).find(p => p.itemId === i.id);
+                        if (existing) return (prev || []).map(p => p.itemId === i.id ? { ...p, quantity: p.quantity + q } : p);
+                        const targetZone = forcedZone || (selectedZone === GLOBAL_ZONE_KEY ? (availableZones[0] || Zone.MAIN) : selectedZone);
+                        return [...(prev || []), { itemId: i.id, sku: i.sku, name: i.name, quantity: q, zone: targetZone, uom: i.uom }];
+                      });
+                      notify("Added to Cart");
                     }} 
                     onEdit={(i) => { if (!isGuest) setIsEditingItem(i); }} 
                     isAuditMode={isAuditMode}
@@ -1521,95 +1523,6 @@ const App: React.FC = () => {
 
       {/* Requisition Form Scanner Overlay */}
 
-
-      {/* Zone Selection Modal */}
-      {itemForZoneSelection && (
-        <div className="fixed inset-0 z-[5000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl space-y-6 animate-in zoom-in-95">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-[#800000]/5 text-[#800000] rounded-full flex items-center justify-center mx-auto mb-4">
-                <Database size={32} />
-              </div>
-              <h3 className="text-lg font-black uppercase tracking-widest text-gray-900">Select Source Zone</h3>
-              <p className="text-[10px] font-bold text-gray-400 uppercase mt-1">Deducting: {itemForZoneSelection.item.name}</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Quantity to Issue</label>
-                <div className="flex items-center gap-3 bg-gray-50 p-2 rounded-2xl border border-gray-100">
-                  <button 
-                    onClick={() => setItemForZoneSelection(prev => prev ? { ...prev, quantity: Math.max(1, prev.quantity - 1) } : null)}
-                    className="p-3 bg-white rounded-xl shadow-sm active:scale-95 transition-transform text-[#800000]"
-                  >
-                    <Minus size={18} />
-                  </button>
-                  <input 
-                    type="number" 
-                    value={itemForZoneSelection.quantity} 
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10) || 1;
-                      setItemForZoneSelection(prev => prev ? { ...prev, quantity: val } : null);
-                    }}
-                    className="flex-1 text-center text-2xl font-black bg-transparent outline-none text-gray-900"
-                  />
-                  <button 
-                    onClick={() => setItemForZoneSelection(prev => prev ? { ...prev, quantity: prev.quantity + 1 } : null)}
-                    className="p-3 bg-white rounded-xl shadow-sm active:scale-95 transition-transform text-[#800000]"
-                  >
-                    <Plus size={18} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Select Source Zone</label>
-                {Object.entries(itemForZoneSelection.item.stock || {})
-                  .filter(([, qty]) => (qty as number) > 0)
-                  .map(([zone, qty]) => (
-                    <button
-                      key={zone}
-                      onClick={() => {
-                        const i = itemForZoneSelection.item;
-                        const q = itemForZoneSelection.quantity;
-                        
-                        if (q > (qty as number)) {
-                          notifyError(`Insufficient stock in ${zone.split(' (')[0]}`);
-                          return;
-                        }
-
-                        setCart(prev => {
-                          const existing = (prev || []).find(p => p.itemId === i.id && p.zone === zone);
-                          if (existing) return (prev || []).map(p => (p.itemId === i.id && p.zone === zone) ? { ...p, quantity: p.quantity + q } : p);
-                          return [...(prev || []), { itemId: i.id, sku: i.sku, name: i.name, quantity: q, zone: zone, uom: i.uom }];
-                        });
-                        setItemForZoneSelection(null);
-                        notify(`Added to Cart (${zone.split(' (')[0]})`);
-                      }}
-                      className="w-full p-5 bg-gray-50 border border-gray-100 rounded-3xl flex items-center justify-between group hover:border-[#800000]/20 transition-all active:scale-95"
-                    >
-                      <div className="text-left">
-                        <p className="text-[13px] font-black text-gray-900 uppercase">{zone.split(' (')[0]}</p>
-                        <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">{zone.includes('(') ? zone.split('(')[1].replace(')', '') : ''}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[14px] font-black text-[#800000]">{qty as number}</p>
-                        <p className="text-[8px] font-bold text-gray-400 uppercase">{itemForZoneSelection.item.uom}</p>
-                      </div>
-                    </button>
-                  ))}
-              </div>
-            </div>
-
-            <button
-              onClick={() => setItemForZoneSelection(null)}
-              className="w-full py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Turso Cloud Setup Modal */}
       {isCloudSetupOpen && (
@@ -1993,7 +1906,7 @@ const App: React.FC = () => {
                     <div className="min-w-0 flex-1">
                       <p className="font-black text-[12px] text-gray-800 uppercase truncate pr-4">{item.name}</p>
                       <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">
-                        {item.zone?.split(' (')[0] || 'Main WH'} • {item.quantity} {item.uom}
+                        {item.zone?.split(' (')[0] || Zone.MAIN} • {item.quantity} {item.uom}
                       </p>
                     </div>
                     <button onClick={() => setCart(prev => (prev || []).filter((_, i) => i !== idx))} className="text-gray-200 hover:text-red-500 transition-colors shrink-0">

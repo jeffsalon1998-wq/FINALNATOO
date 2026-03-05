@@ -29,28 +29,12 @@ class Database {
 
       await this.client.execute("SELECT 1"); // Test connection
       await this.createTables();
-      await this.runMigrations();
       console.log("Turso database initialized and connected.");
       return true;
     } catch (e) {
       console.error("Failed to initialize Turso database:", e);
       this.client = null;
       return false;
-    }
-  }
-
-  private async runMigrations(): Promise<void> {
-    if (!this.client) throw new Error("Database not initialized.");
-    // Migration for zones
-    const config = await this.client.execute("SELECT zones FROM config WHERE id = 'app_config'");
-    if (config.rows.length > 0) {
-      const zones = JSON.parse(config.rows[0].zones as string);
-      if (zones.includes('Main (On-site 25sqm)')) {
-        await this.client.execute(`
-          UPDATE config SET zones = '["Main WH (On-site)", "Chem Storage (On-site)", "Banga WH (Off-site)", "Banga Chem (Off-site)"]' 
-          WHERE id = 'app_config'
-        `);
-      }
     }
   }
 
@@ -255,7 +239,7 @@ class Database {
         'app_config',
         '["Dry Goods", "Alcohol", "Guest Supplies", "Chemicals", "Food", "Beverage", "Supplies", "Equipment", "Other"]',
         '["Kitchen", "Bar", "Housekeeping", "Front Desk", "Maintenance", "Restaurant", "Admin"]',
-        '["Main WH (On-site)", "Chem Storage (On-site)", "Banga WH (Off-site)", "Banga Chem (Off-site)"]',
+        '["Main (On-site 25sqm)", "Satellite (On-site 10sqm)", "Bulk (4.5km Off-site 30sqm)", "Utility (4.5km Off-site 15sqm)", "Main Storage", "Kitchen Fridge", "Bar Stock", "Cleaning Supply", "Office"]',
         'sunlight2024'
       );
     `);

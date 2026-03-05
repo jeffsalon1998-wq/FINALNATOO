@@ -22,9 +22,9 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     name: 'Jasmine Rice (25kg)',
     category: 'Dry Goods',
     uom: 'Sack',
-    stock: { [Zone.MAIN_WH]: 2 },
+    stock: { [Zone.MAIN]: 2 },
     batches: [
-      { id: 'BAT-001', expiry: '2025-12-31', quantity: 2, zone: Zone.MAIN_WH }
+      { id: 'BAT-001', expiry: '2025-12-31', quantity: 2, zone: Zone.MAIN }
     ],
     earliestExpiry: '2025-12-31',
     unitCost: 1250,
@@ -38,9 +38,9 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     name: 'San Miguel Pale Pilsen',
     category: 'Alcohol',
     uom: 'Case',
-    stock: { [Zone.MAIN_WH]: 24 },
+    stock: { [Zone.MAIN]: 24 },
     batches: [
-      { id: 'BAT-002', expiry: todayPlus15, quantity: 24, zone: Zone.MAIN_WH }
+      { id: 'BAT-002', expiry: todayPlus15, quantity: 24, zone: Zone.MAIN }
     ],
     earliestExpiry: todayPlus15,
     unitCost: 950,

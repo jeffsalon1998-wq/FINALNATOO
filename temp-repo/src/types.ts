@@ -1,9 +1,9 @@
 
 export enum Zone {
-  MAIN_WH = 'Main WH (On-site)',
-  CHEM_STORAGE = 'Chem Storage (On-site)',
-  BANGA_WH = 'Banga WH (Off-site)',
-  BANGA_CHEM = 'Banga Chem (Off-site)'
+  MAIN = 'Main (On-site 25sqm)',
+  SATELLITE = 'Satellite (On-site 10sqm)',
+  BULK = 'Bulk (4.5km Off-site 30sqm)',
+  UTILITY = 'Utility (4.5km Off-site 15sqm)'
 }
 
 export enum Category {
